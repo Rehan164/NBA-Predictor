@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show:*)",
+      "Bash(python -m pip install:*)",
+      "Bash(python:*)",
+      "WebFetch(domain:site.api.espn.com)",
+      "Bash(pip install:*)"
+    ]
+  }
+}
