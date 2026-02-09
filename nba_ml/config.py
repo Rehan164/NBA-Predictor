@@ -27,7 +27,7 @@ MODELS_DIR.mkdir(exist_ok=True)
 # ── Data Collection ──────────────────────────────────────────────────────────
 
 START_SEASON = 2000  # First season to collect (2000 = 1999-2000 season)
-END_SEASON = 2025    # Last season to collect (2025 = 2024-2025 season)
+END_SEASON = 2026    # Last season to collect (2026 = 2025-2026 season)
 
 # Rate limiting for NBA API
 NBA_API_DELAY = 0.6  # seconds between requests (slightly under 1/sec to be safe)
@@ -59,9 +59,18 @@ OPTUNA_TRIALS = OPTUNA_PHASE1_TRIALS + OPTUNA_PHASE2_TRIALS + OPTUNA_PHASE3_TRIA
 # Early stopping (prevents overfitting, allows more trees)
 EARLY_STOPPING_ROUNDS = 50
 
-# Sample weighting (recent games matter more)
+# Sample weighting (recent seasons matter more — older eras less predictive)
 USE_SAMPLE_WEIGHTS = True
-WEIGHT_DECAY = 0.9995  # Per-game decay factor (older games weighted less)
+WEIGHT_DECAY = 0.9985        # Team model: per-game decay
+                              #   1 season ago → 88% weight
+                              #   5 seasons   → 54%
+                              #   10 seasons  → 29%
+                              #   20 seasons  → 9%
+PLAYER_WEIGHT_DECAY = 0.9975  # Player props: more aggressive (players develop/decline)
+                              #   1 season ago → 81% weight
+                              #   5 seasons   → 36%
+                              #   10 seasons  → 13%
+                              #   20 seasons  → 2%
 
 # Feature selection
 USE_FEATURE_SELECTION = True

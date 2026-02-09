@@ -25,6 +25,8 @@ from .config import (
     PLAYER_FEATURES_CSV,
     MODELS_DIR,
     RANDOM_STATE,
+    PLAYER_WEIGHT_DECAY,
+    EARLY_STOPPING_ROUNDS,
 )
 
 # Player prop models saved here
@@ -85,7 +87,19 @@ def prepare_xy(df: pd.DataFrame, target_col: str, feature_cols: list):
     return x, y
 
 
-def objective(trial, x_train, y_train, cv_folds):
+def compute_player_weights(n_samples):
+    """Exponential decay: recent player-games matter much more.
+
+    A player's 2014 stats are not equal to their current stats —
+    players improve, decline, change roles. More aggressive decay
+    than team models because individual development matters more.
+    """
+    weights = np.array([PLAYER_WEIGHT_DECAY ** (n_samples - 1 - i) for i in range(n_samples)])
+    weights = weights / weights.mean()  # Normalize so mean = 1
+    return weights
+
+
+def objective(trial, x_train, y_train, cv_folds, sample_weights):
     params = {
         "objective": "reg:squarederror",
         "eval_metric": "mae",
@@ -107,8 +121,15 @@ def objective(trial, x_train, y_train, cv_folds):
     for tr_idx, val_idx in tscv.split(x_train):
         x_tr, x_val = x_train.iloc[tr_idx], x_train.iloc[val_idx]
         y_tr, y_val = y_train.iloc[tr_idx], y_train.iloc[val_idx]
+        w_tr = sample_weights[tr_idx]
+
         model = xgb.XGBRegressor(**params)
-        model.fit(x_tr, y_tr, verbose=False)
+        model.fit(
+            x_tr, y_tr,
+            sample_weight=w_tr,
+            eval_set=[(x_val, y_val)],
+            verbose=False,
+        )
         pred = model.predict(x_val)
         scores.append(-mean_absolute_error(y_val, pred))
 
@@ -120,13 +141,20 @@ def train_prop_model(x_train, y_train, stat_name: str):
     print(f"    Samples: {len(x_train):,}, Features: {x_train.shape[1]}")
     print(f"    Target — mean: {y_train.mean():.2f}, std: {y_train.std():.2f}")
 
+    # Compute sample weights — older player data decays aggressively
+    weights = compute_player_weights(len(x_train))
+    oldest_weight = weights[0]
+    newest_weight = weights[-1]
+    print(f"    Sample weights: oldest={oldest_weight:.4f}, newest={newest_weight:.4f}, "
+          f"decay={PLAYER_WEIGHT_DECAY}")
+
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study = optuna.create_study(
         direction="maximize",
         sampler=TPESampler(seed=RANDOM_STATE),
     )
     study.optimize(
-        lambda trial: objective(trial, x_train, y_train, CV_FOLDS),
+        lambda trial: objective(trial, x_train, y_train, CV_FOLDS, weights),
         n_trials=N_TRIALS,
         show_progress_bar=True,
     )
@@ -141,8 +169,23 @@ def train_prop_model(x_train, y_train, stat_name: str):
         **study.best_params,
     }
 
-    model = xgb.XGBRegressor(**best_params)
-    model.fit(x_train, y_train, verbose=False)
+    # Train final model with early stopping on holdout
+    best_params["n_estimators"] = max(best_params.get("n_estimators", 500), 1000)
+    split_idx = int(len(x_train) * 0.85)
+    x_fit, x_hold = x_train.iloc[:split_idx], x_train.iloc[split_idx:]
+    y_fit, y_hold = y_train.iloc[:split_idx], y_train.iloc[split_idx:]
+    w_fit = weights[:split_idx]
+
+    model = xgb.XGBRegressor(**best_params, early_stopping_rounds=EARLY_STOPPING_ROUNDS)
+    model.fit(
+        x_fit, y_fit,
+        sample_weight=w_fit,
+        eval_set=[(x_hold, y_hold)],
+        verbose=False,
+    )
+
+    actual_trees = model.best_iteration + 1 if hasattr(model, 'best_iteration') and model.best_iteration else best_params["n_estimators"]
+    print(f"    Final model: {actual_trees} trees (early stopped from {best_params['n_estimators']})")
 
     return model, study.best_params
 
