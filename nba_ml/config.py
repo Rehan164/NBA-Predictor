@@ -47,8 +47,21 @@ TEST_START_DATE = "2022-10-01"  # Test on data after this date
 CV_FOLDS = 7  # More folds for robust validation
 RANDOM_STATE = 42
 
-# Optuna hyperparameter tuning
-OPTUNA_TRIALS = 100  # More trials for better hyperparameter search
+# Optuna multi-phase tuning
+# Phase 1: QMC exploration (wide ranges, find promising regions)
+# Phase 2: TPE exploitation (narrow around best, Bayesian optimization)
+# Phase 3: CMA-ES polish (evolution strategy, fine-tune continuous params)
+OPTUNA_PHASE1_TRIALS = 40   # QMC broad exploration
+OPTUNA_PHASE2_TRIALS = 80   # TPE focused search
+OPTUNA_PHASE3_TRIALS = 30   # CMA-ES final polish
+OPTUNA_TRIALS = OPTUNA_PHASE1_TRIALS + OPTUNA_PHASE2_TRIALS + OPTUNA_PHASE3_TRIALS  # Total: 150
+
+# Early stopping (prevents overfitting, allows more trees)
+EARLY_STOPPING_ROUNDS = 50
+
+# Sample weighting (recent games matter more)
+USE_SAMPLE_WEIGHTS = True
+WEIGHT_DECAY = 0.9995  # Per-game decay factor (older games weighted less)
 
 # Feature selection
 USE_FEATURE_SELECTION = True
