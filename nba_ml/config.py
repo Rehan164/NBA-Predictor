@@ -17,6 +17,7 @@ HISTORICAL_GAMES_CSV = DATA_DIR / "nba_historical_games.csv"
 PLAYER_GAME_LOGS_CSV = DATA_DIR / "nba_player_game_logs.csv"
 REFEREE_DATA_CSV = DATA_DIR / "nba_referee_data.csv"
 TRAINING_FEATURES_CSV = DATA_DIR / "nba_training_features.csv"
+PLAYER_FEATURES_CSV = DATA_DIR / "nba_player_features.csv"
 
 # Ensure directories exist
 DATA_DIR.mkdir(exist_ok=True)
