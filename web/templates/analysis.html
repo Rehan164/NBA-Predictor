@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NBA Analysis — Claude</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-dot"></div>
+        NBA Predictor
+      </div>
+      <span class="header-date">{{ date }}</span>
+      <div class="header-spacer"></div>
+      <a href="/" class="nav-link">Dashboard</a>
+      <a href="/live" class="nav-link">Live Tracker</a>
+      <a href="/money" class="nav-link">Money</a>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Hero -->
+    <div class="analysis-hero">
+      <div class="analysis-hero-text">
+        <h2>Claude AI Analysis</h2>
+        <p>Runs our ML models against today's injury report, odds, and player props — then sends everything to Claude for expert pick selection.</p>
+      </div>
+      <div class="analysis-hero-actions">
+        <div class="picks-target">
+          <span>Target picks</span>
+          <input type="number" id="picks-target" value="5" min="1" max="10">
+        </div>
+        <button id="run-btn" class="btn-run">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          Run Analysis
+        </button>
+      </div>
+    </div>
+
+    <!-- Progress Log -->
+    <div id="progress-log" class="progress-log"></div>
+
+    <!-- Results -->
+    <div id="picks-section" class="picks-section">
+
+      <div class="section-header" style="margin-bottom:16px">
+        <h2 class="section-title">Today's Picks</h2>
+        <span id="picks-count" class="section-count">0</span>
+      </div>
+
+      <div id="picks-list" class="picks-list"></div>
+
+      <!-- Full Analysis Toggle -->
+      <button id="toggle-analysis-btn" class="btn-toggle-analysis">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18l6-6-6-6"/>
+        </svg>
+        Show full Claude analysis
+      </button>
+      <pre id="full-analysis" class="analysis-full"></pre>
+
+      <!-- Parlay Calculator -->
+      <div class="section-header" style="margin: 28px 0 16px">
+        <h2 class="section-title">Parlay Calculator</h2>
+      </div>
+
+      <div class="parlay-card">
+        <div class="parlay-header">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent)">
+            <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+          <span class="parlay-title">Combined Probability</span>
+          <span id="parlay-note" style="font-size:12px;color:var(--text-muted);margin-left:auto">All picks stacked</span>
+        </div>
+        <table class="parlay-table">
+          <thead>
+            <tr>
+              <th>Legs</th>
+              <th>Picks</th>
+              <th>Probability</th>
+              <th>American Odds</th>
+            </tr>
+          </thead>
+          <tbody id="parlay-body"></tbody>
+        </table>
+      </div>
+
+    </div>
+
+  </main>
+
+  <script src="/static/analysis.js"></script>
+</body>
+</html>

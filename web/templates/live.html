@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NBA Live Tracker</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-dot"></div>
+        NBA Predictor
+      </div>
+      <span class="header-date">{{ date }}</span>
+      <div class="header-spacer"></div>
+      <a href="/" class="nav-link">Dashboard</a>
+      <a href="/analysis" class="nav-link">AI Analysis</a>
+      <a href="/live" class="nav-link active">Live Tracker</a>
+      <a href="/money" class="nav-link">Money</a>
+    </div>
+  </header>
+
+  <main class="live-layout">
+
+    <!-- Left: Games strip + Picks -->
+    <div class="live-main">
+
+      <!-- Games Strip -->
+      <section>
+        <div class="section-header">
+          <h2 class="section-title">Today's Games</h2>
+          <div id="live-refresh-indicator" class="live-refresh-indicator">
+            <span class="live-dot"></span>
+            <span id="live-refresh-text">Refreshing every 30s</span>
+          </div>
+        </div>
+        <div id="live-games-strip" class="live-games-strip">
+          <div class="state-loading"><div class="spinner"></div><span>Loading games…</span></div>
+        </div>
+      </section>
+
+      <!-- My Parlays -->
+      <section>
+        <div class="section-header">
+          <h2 class="section-title">My Parlays</h2>
+          <div class="header-spacer"></div>
+          <button id="add-group-btn" class="btn-add-group">+ New Parlay</button>
+          <button id="add-pick-btn" class="btn-add-pick">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add Pick
+          </button>
+        </div>
+        <div id="parlays-container" class="parlays-container">
+          <div class="picks-empty">
+            <div class="picks-empty-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+              </svg>
+            </div>
+            <p>No picks yet.</p>
+            <button class="btn-add-pick-empty" onclick="document.getElementById('add-pick-btn').click()">Add your first pick</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Right: On Court sidebar -->
+    <aside class="live-sidebar">
+      <div class="court-sidebar-header">
+        <span class="section-title" style="font-size:13px">On Court</span>
+        <div class="court-nav">
+          <button id="court-prev" class="court-nav-btn" title="Previous game">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <span id="court-game-label" class="court-game-label">—</span>
+          <button id="court-next" class="court-nav-btn" title="Next game">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+        </div>
+      </div>
+      <div id="boxscore-sidebar"></div>
+    </aside>
+
+  </main>
+
+  <!-- Add Pick Modal -->
+  <div id="add-pick-backdrop" class="modal-backdrop"></div>
+  <div id="add-pick-modal" class="add-pick-modal">
+    <div class="modal-drag-handle"></div>
+    <div class="add-pick-modal-header">
+      <span class="add-pick-modal-title">Add Pick</span>
+      <button id="add-pick-close" class="btn-close">✕</button>
+    </div>
+
+    <div class="add-pick-form">
+
+      <!-- Pick type selector -->
+      <div class="form-group">
+        <div class="pick-type-tabs">
+          <button class="pick-type-tab active" data-type="prop">Player Prop</button>
+          <button class="pick-type-tab" data-type="ml">Moneyline</button>
+          <button class="pick-type-tab" data-type="spread">Spread</button>
+          <button class="pick-type-tab" data-type="total">Game Total</button>
+        </div>
+      </div>
+
+      <!-- Player Prop section -->
+      <div id="section-prop">
+        <div class="form-group" style="position:relative">
+          <label class="form-label">Player Name</label>
+          <input
+            type="text"
+            id="pick-player-input"
+            class="form-input"
+            placeholder="e.g. Stephon Castle"
+            autocomplete="off"
+          >
+          <div id="player-suggestions" class="player-suggestions"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Stat</label>
+          <div class="pick-stat-tabs">
+            <button class="pick-stat-tab active" data-stat="pts">Points</button>
+            <button class="pick-stat-tab" data-stat="reb">Rebounds</button>
+            <button class="pick-stat-tab" data-stat="ast">Assists</button>
+            <button class="pick-stat-tab" data-stat="tpm">3-PT</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Direction</label>
+          <div class="pick-dir-tabs">
+            <button class="pick-dir-tab active" data-dir="over">Over</button>
+            <button class="pick-dir-tab" data-dir="under">Under</button>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Line</label>
+          <input
+            type="number"
+            id="pick-line-input"
+            class="form-input"
+            placeholder="e.g. 15.5"
+            step="0.5"
+            min="0"
+          >
+        </div>
+      </div>
+
+      <!-- Moneyline section -->
+      <div id="section-ml" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Game</label>
+          <select id="ml-game-select" class="form-input"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Pick to Win</label>
+          <div id="ml-team-tabs" class="pick-dir-tabs"></div>
+        </div>
+      </div>
+
+      <!-- Spread section -->
+      <div id="section-spread" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Game</label>
+          <select id="spread-game-select" class="form-input"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Team</label>
+          <div id="spread-team-tabs" class="pick-dir-tabs"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Spread (their line, e.g. -6.5)</label>
+          <input
+            type="number"
+            id="spread-line-input"
+            class="form-input"
+            placeholder="e.g. -6.5"
+            step="0.5"
+          >
+        </div>
+      </div>
+
+      <!-- Game Total section -->
+      <div id="section-total" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Game</label>
+          <select id="total-game-select" class="form-input"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Direction</label>
+          <div class="pick-dir-tabs" id="total-dir-tabs">
+            <button class="pick-dir-tab active" data-dir="over">Over</button>
+            <button class="pick-dir-tab" data-dir="under">Under</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Total Line</label>
+          <input
+            type="number"
+            id="total-line-input"
+            class="form-input"
+            placeholder="e.g. 224.5"
+            step="0.5"
+            min="0"
+          >
+        </div>
+      </div>
+
+      <!-- Add to parlay row -->
+      <div class="form-group" id="group-select-wrap">
+        <label class="form-label">Add to</label>
+        <select id="pick-group-select" class="form-input"></select>
+      </div>
+
+      <button id="confirm-pick-btn" class="btn-confirm-pick">Add to Parlay</button>
+    </div>
+  </div>
+
+  <script src="/static/live.js"></script>
+</body>
+</html>

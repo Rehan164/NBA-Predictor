@@ -1,0 +1,25 @@
+# Data collection & processing
+nba_api
+pandas
+numpy
+requests
+tqdm
+
+# ML models
+xgboost
+lightgbm
+catboost
+scikit-learn
+optuna
+torch
+
+# Claude AI analysis (picks system)
+anthropic
+python-dotenv
+
+# Display
+tabulate
+matplotlib
+
+# Web dashboard
+flask

@@ -247,8 +247,57 @@ def add_betting_outcomes(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def update_current_season():
+    """
+    Fast incremental update: re-fetch only the current season and merge
+    into the existing CSV. Use this instead of full re-collection when
+    you just want today's latest games.
+    """
+    print("=" * 60)
+    print("NBA Data — Incremental Update (current season only)")
+    print("=" * 60)
+
+    # Load existing data
+    if not HISTORICAL_GAMES_CSV.exists():
+        print("No existing data found. Run full collection first.")
+        return
+
+    existing = pd.read_csv(HISTORICAL_GAMES_CSV)
+    before = len(existing)
+    print(f"Existing games: {before:,}  (latest: {existing['date'].max()})")
+
+    # Re-fetch current season
+    print(f"\nFetching {END_SEASON - 1}-{str(END_SEASON)[2:]} season...")
+    season_df = fetch_season_games(END_SEASON)
+    if season_df.empty:
+        print("Could not fetch current season data.")
+        return
+
+    new_games = process_game_logs_to_games(season_df)
+    new_games = add_betting_outcomes(new_games)
+    print(f"  API returned {len(new_games)} games for current season")
+
+    # Drop existing current-season rows, replace with fresh data
+    existing = existing[existing["season"] != END_SEASON]
+    combined = pd.concat([existing, new_games], ignore_index=True)
+    combined = combined.sort_values("date").reset_index(drop=True)
+
+    added = len(combined) - before
+    print(f"\nNew games added: {added:,}")
+    print(f"Updated date range: {combined['date'].min()} to {combined['date'].max()}")
+
+    combined.to_csv(HISTORICAL_GAMES_CSV, index=False)
+    print(f"Saved to: {HISTORICAL_GAMES_CSV}")
+
+
 def main():
     """Main data collection routine."""
+    import sys
+    # Pass --update (or -u) for fast incremental update of current season only
+    if len(sys.argv) > 1 and sys.argv[1] in ("--update", "-u"):
+        update_current_season()
+        return
+
     print("=" * 60)
     print("NBA Historical Data Collection")
     print("=" * 60)

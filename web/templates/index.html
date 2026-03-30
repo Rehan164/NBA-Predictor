@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NBA Predictor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-dot"></div>
+        NBA Predictor
+      </div>
+      <span class="header-date">{{ date }}</span>
+      <div class="header-spacer"></div>
+      <a href="/analysis" class="nav-link">AI Analysis</a>
+      <a href="/live" class="nav-link">Live Tracker</a>
+      <a href="/money" class="nav-link">Money</a>
+      <button id="refresh-btn" class="btn-refresh">
+        <svg class="refresh-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+          <path d="M21 3v5h-5"/>
+          <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+          <path d="M8 16H3v5"/>
+        </svg>
+        Refresh
+      </button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- Games Section -->
+    <section>
+      <div class="section-header">
+        <h2 class="section-title">Today's Games</h2>
+        <span id="games-count" class="section-count">0</span>
+      </div>
+      <div id="games-container" class="games-scroll"></div>
+    </section>
+
+    <!-- Players Section -->
+    <section>
+      <div class="section-header">
+        <h2 class="section-title">Player Props</h2>
+        <span id="players-count" class="section-count">0</span>
+        <div class="stat-tabs">
+          <button class="stat-tab active" data-stat="pts">PTS</button>
+          <button class="stat-tab" data-stat="reb">REB</button>
+          <button class="stat-tab" data-stat="ast">AST</button>
+        </div>
+      </div>
+      <div id="players-container" class="players-grid"></div>
+    </section>
+
+  </main>
+
+  <!-- Game Detail Backdrop + Panel -->
+  <div id="game-backdrop" class="modal-backdrop"></div>
+  <div id="game-panel" class="modal-panel game-panel">
+    <div class="modal-drag-handle"></div>
+    <div id="game-panel-inner">
+      <div class="state-loading"><div class="spinner"></div><span>Loading roster...</span></div>
+    </div>
+  </div>
+
+  <!-- Player Modal Backdrop -->
+  <div id="modal-backdrop" class="modal-backdrop"></div>
+
+  <!-- Player Detail Panel -->
+  <div id="modal-panel" class="modal-panel">
+    <div class="modal-drag-handle"></div>
+
+    <div class="modal-header">
+      <div>
+        <div id="modal-player-name" class="modal-player-name"></div>
+        <div class="modal-meta">
+          <span id="modal-team"></span>
+          <span id="modal-avg"></span>
+          <span id="modal-hit-rate"></span>
+        </div>
+        <div id="modal-injury" style="display:none;align-items:center;gap:8px;margin-top:8px"></div>
+      </div>
+      <button id="modal-close-btn" class="btn-close">✕</button>
+    </div>
+
+    <div class="modal-controls">
+      <div class="modal-stat-tabs">
+        <button class="modal-stat-tab active" data-stat="pts">Points</button>
+        <button class="modal-stat-tab" data-stat="reb">Rebounds</button>
+        <button class="modal-stat-tab" data-stat="ast">Assists</button>
+      </div>
+      <div class="line-input-group">
+        <span class="line-input-label">Line</span>
+        <input
+          type="number"
+          id="line-input"
+          class="line-input"
+          step="0.5"
+          min="0"
+          placeholder="—"
+        >
+      </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div id="stats-summary" class="stats-summary">
+      <div class="summary-card"><div class="summary-val">—</div><div class="summary-lbl">Avg</div></div>
+      <div class="summary-card"><div class="summary-val">—</div><div class="summary-lbl">Hit Rate</div></div>
+      <div class="summary-card"><div class="summary-val">—</div><div class="summary-lbl">Last 5 Avg</div></div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-wrapper">
+      <canvas id="player-chart"></canvas>
+    </div>
+
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

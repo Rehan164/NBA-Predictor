@@ -8,6 +8,7 @@ Usage:
     python -m nba_ml.predict
 """
 
+import json
 import math
 import pickle
 import platform
@@ -17,6 +18,8 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from .config import MODELS_DIR, TRAINING_FEATURES_CSV, DATA_DIR
+
+CALIBRATION_FILE = MODELS_DIR / "calibration.json"
 
 # Eastern timezone for NBA schedule
 ET = timezone(timedelta(hours=-5))
@@ -222,16 +225,80 @@ def build_matchup_features(home_team: str, away_team: str, feature_df: pd.DataFr
 def prepare_features(features: dict, feature_cols: list) -> pd.DataFrame:
     """Build a single-row DataFrame aligned to model's feature columns."""
     x = pd.DataFrame([features])
-    for col in feature_cols:
-        if col not in x.columns:
-            x[col] = np.nan
+
+    # Add all missing columns at once to avoid fragmentation
+    missing_cols = [col for col in feature_cols if col not in x.columns]
+    if missing_cols:
+        missing_df = pd.DataFrame({col: [np.nan] for col in missing_cols})
+        x = pd.concat([x, missing_df], axis=1)
+
     return x[feature_cols].fillna(0)
 
 
+def load_calibration() -> dict:
+    """Load bias corrections from backtest calibration file."""
+    if CALIBRATION_FILE.exists():
+        with open(CALIBRATION_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def _predict_with_model(model_data, x):
+    """
+    Get predictions from either a single model or an ensemble.
+    Returns (prediction, probability_or_None) tuple.
+
+    Handles both old format: {"model": xgb_model, "model_type": "classifier"}
+    and new format: {"models": {"xgb":..., "lgb":..., "cat":...}, "meta_learner":..., "model_type": "ensemble_classifier"}
+    """
+    model_type = model_data.get("model_type", "classifier")
+
+    if model_type == "ensemble_classifier":
+        models = model_data["models"]
+        meta = model_data["meta_learner"]
+        base_preds = np.column_stack([
+            models["xgb"].predict_proba(x)[:, 1],
+            models["lgb"].predict_proba(x)[:, 1],
+            models["cat"].predict_proba(x)[:, 1],
+        ])
+        prob = float(meta.predict_proba(base_preds)[0, 1])
+
+        # Apply isotonic calibration if available
+        calibrator = model_data.get("calibrator")
+        if calibrator is not None:
+            prob = float(calibrator.predict([prob])[0])
+
+        return None, prob
+
+    elif model_type == "ensemble_regressor":
+        models = model_data["models"]
+        meta = model_data["meta_learner"]
+        base_preds = np.column_stack([
+            models["xgb"].predict(x),
+            models["lgb"].predict(x),
+            models["cat"].predict(x),
+        ])
+        pred = float(meta.predict(base_preds)[0])
+        return pred, None
+
+    elif model_type == "classifier":
+        model = model_data["model"]
+        prob = float(model.predict_proba(x)[0, 1])
+        return None, prob
+
+    else:  # regressor
+        model = model_data["model"]
+        pred = float(model.predict(x)[0])
+        return pred, None
+
+
 def predict_game(home_team: str, away_team: str, game: dict,
-                  models: dict, feature_df: pd.DataFrame) -> dict:
-    """Generate predictions for a single game with live odds."""
+                  models: dict, feature_df: pd.DataFrame, injuries: dict = None,
+                  calibration: dict = None) -> dict:
+    """Generate predictions for a single game with live odds and injury adjustments."""
     features = build_matchup_features(home_team, away_team, feature_df)
+    if calibration is None:
+        calibration = {}
 
     if not features:
         return {"error": f"Insufficient data for {away_team} @ {home_team}"}
@@ -250,19 +317,20 @@ def predict_game(home_team: str, away_team: str, game: dict,
         "under_odds": game.get("under_odds", -110),
         "game_time": game.get("game_time", ""),
         "picks": [],
+        "injuries": injuries or {},
     }
 
     for model_name, model_data in models.items():
-        model = model_data["model"]
-        model_type = model_data.get("model_type", "classifier")
         feature_cols = model_data["feature_columns"]
-
         x = prepare_features(features, feature_cols)
 
         if model_name == "moneyline_model":
-            # Classification: predict probability of home win
-            prob = model.predict_proba(x)[0]
-            home_prob = prob[1]
+            _, home_prob = _predict_with_model(model_data, x)
+
+            # Apply backtest bias correction
+            ml_shift = calibration.get("ml_home_shift", 0)
+            if ml_shift:
+                home_prob = max(0.01, min(0.99, home_prob + ml_shift))
 
             if home_prob > 0.5:
                 pick_team = home_team
@@ -283,15 +351,32 @@ def predict_game(home_team: str, away_team: str, game: dict,
             })
 
         elif model_name == "spread_model":
-            # Regression: predict home margin, compare to spread line
-            predicted_margin = float(model.predict(x)[0])
-            sv = game.get("spread_val")
+            predicted_margin, _ = _predict_with_model(model_data, x)
 
+            # Apply backtest bias correction
+            margin_bias = calibration.get("margin_bias", 0)
+            if margin_bias:
+                predicted_margin -= margin_bias
+
+            if injuries:
+                from .injuries import apply_injury_adjustments
+                base_total = features.get("projected_total", 220)
+                adj = apply_injury_adjustments(
+                    home_team, away_team,
+                    predicted_margin, base_total,
+                    injuries
+                )
+                predicted_margin = adj["adjusted_spread"]
+                result["injury_adjustment"] = {
+                    "spread": adj["spread_adjustment"],
+                    "home_out": adj["home_injuries"],
+                    "away_out": adj["away_injuries"],
+                }
+
+            sv = game.get("spread_val")
             result["predicted_margin"] = predicted_margin
 
             if sv is not None:
-                # edge = predicted_margin + spread_val
-                # Positive edge → home covers, negative → away covers
                 edge = predicted_margin + sv
                 conf = edge_to_confidence(edge)
 
@@ -310,7 +395,6 @@ def predict_game(home_team: str, away_team: str, game: dict,
                     "detail": f"Predicted margin: {predicted_margin:+.1f}, Edge: {edge:+.1f}",
                 })
             else:
-                # No spread available, just show predicted margin direction
                 conf = edge_to_confidence(predicted_margin)
                 if predicted_margin > 0:
                     pick_label = f"{home_team} (spread)"
@@ -326,10 +410,34 @@ def predict_game(home_team: str, away_team: str, game: dict,
                 })
 
         elif model_name == "totals_model":
-            # Regression: predict total score, compare to O/U line
-            predicted_total = float(model.predict(x)[0])
-            ou_line = game.get("over_under")
+            raw_pred, _ = _predict_with_model(model_data, x)
 
+            # Handle deviation-based totals model
+            if model_data.get("target_type") == "deviation":
+                projected = features.get("projected_total", 220)
+                predicted_total = projected + raw_pred
+            else:
+                predicted_total = raw_pred
+
+            # Apply backtest bias correction
+            total_bias = calibration.get("total_bias", 0)
+            if total_bias:
+                predicted_total -= total_bias
+
+            if injuries:
+                from .injuries import apply_injury_adjustments
+                base_margin = result.get("predicted_margin", 0)
+                adj = apply_injury_adjustments(
+                    home_team, away_team,
+                    base_margin, predicted_total,
+                    injuries
+                )
+                predicted_total = adj["adjusted_total"]
+                if "injury_adjustment" not in result:
+                    result["injury_adjustment"] = {}
+                result["injury_adjustment"]["total"] = adj["total_adjustment"]
+
+            ou_line = game.get("over_under")
             result["predicted_total"] = predicted_total
 
             if ou_line is not None:
@@ -382,8 +490,10 @@ def load_player_prop_models() -> dict:
     return models
 
 
-def get_recent_players(player_csv: Path, teams: set, n_per_team: int = 8) -> pd.DataFrame:
-    """Get top players for given teams based on recent minutes."""
+def get_recent_players(player_csv: Path, teams: set, n_per_team: int = 8,
+                       injuries: dict = None) -> pd.DataFrame:
+    """Get top players for given teams based on recent minutes.
+    Filters out injured (OUT) players when injury data is provided."""
     if not player_csv.exists():
         return pd.DataFrame()
 
@@ -414,6 +524,18 @@ def get_recent_players(player_csv: Path, teams: set, n_per_team: int = 8) -> pd.
 
     # Only players with 5+ games in the window
     avg_min = avg_min[avg_min["games_played"] >= 5]
+
+    # Filter out injured (OUT) players
+    if injuries:
+        before_count = len(avg_min)
+        mask = avg_min.apply(
+            lambda row: row["PLAYER_NAME"] not in injuries.get(row["TEAM_ABBREVIATION"], []),
+            axis=1,
+        )
+        avg_min = avg_min[mask]
+        filtered_count = before_count - len(avg_min)
+        if filtered_count > 0:
+            print(f"    Filtered {filtered_count} injured player(s) from props")
 
     top_players = (
         avg_min.sort_values(["TEAM_ABBREVIATION", "MIN"], ascending=[True, False])
@@ -484,8 +606,10 @@ def build_player_prop_features(player_row, player_history: pd.DataFrame,
 
 
 def predict_player_props(prop_models: dict, player_csv: Path,
-                          games: list, feature_df: pd.DataFrame) -> list:
-    """Generate player prop predictions for today's games."""
+                          games: list, feature_df: pd.DataFrame,
+                          injuries: dict = None) -> list:
+    """Generate player prop predictions for today's games.
+    Filters out injured players when injury data is provided."""
     if not prop_models or not player_csv.exists():
         return []
 
@@ -497,7 +621,7 @@ def predict_player_props(prop_models: dict, player_csv: Path,
         game_matchups[g["home_team"]] = {"opponent": g["away_team"], "is_home": 1}
         game_matchups[g["away_team"]] = {"opponent": g["home_team"], "is_home": 0}
 
-    result = get_recent_players(player_csv, teams_today)
+    result = get_recent_players(player_csv, teams_today, injuries=injuries)
     if isinstance(result, tuple):
         top_players, recent_data = result
     else:
@@ -554,9 +678,10 @@ def predict_player_props(prop_models: dict, player_csv: Path,
             stat_cols = stat_model_data["feature_columns"]
 
             x = pd.DataFrame([feat])
-            for col in stat_cols:
-                if col not in x.columns:
-                    x[col] = np.nan
+            missing_cols = [col for col in stat_cols if col not in x.columns]
+            if missing_cols:
+                missing_df = pd.DataFrame({col: [np.nan] for col in missing_cols})
+                x = pd.concat([x, missing_df], axis=1)
             x = x[stat_cols].fillna(0)
 
             predicted = float(stat_model.predict(x)[0])
@@ -574,6 +699,132 @@ def predict_player_props(prop_models: dict, player_csv: Path,
             })
 
     return predictions
+
+
+def compute_combined_props(predictions: list, player_csv: Path) -> list:
+    """Compute combined prop predictions (PTS+AST, PTS+REB, PTS+REB+AST)
+    with historical hit rates from player game logs."""
+    if not predictions or not player_csv.exists():
+        return []
+
+    plr = pd.read_csv(player_csv)
+    plr["GAME_DATE"] = pd.to_datetime(plr["GAME_DATE"])
+    for col in ["PTS", "REB", "AST"]:
+        plr[col] = pd.to_numeric(plr[col], errors="coerce").fillna(0)
+
+    # Use last 20 games per player for hit rate calculation
+    recent = plr.sort_values("GAME_DATE")
+
+    # Group individual predictions by player
+    by_player = {}
+    for p in predictions:
+        key = (p["player_name"], p["team"])
+        by_player.setdefault(key, {})[p["stat"]] = p
+
+    combined = []
+    for (player_name, team), stats in by_player.items():
+        if not all(s in stats for s in ["PTS", "REB", "AST"]):
+            continue
+
+        pts_pred = stats["PTS"]["predicted"]
+        reb_pred = stats["REB"]["predicted"]
+        ast_pred = stats["AST"]["predicted"]
+
+        # Player's recent game logs (last 20 games)
+        p_games = recent[recent["PLAYER_NAME"] == player_name].tail(20)
+
+        if len(p_games) < 5:
+            continue
+
+        combos = [
+            {
+                "name": "PTS+AST",
+                "predicted": round(pts_pred + ast_pred, 1),
+                "values": p_games["PTS"].values + p_games["AST"].values,
+            },
+            {
+                "name": "PTS+REB",
+                "predicted": round(pts_pred + reb_pred, 1),
+                "values": p_games["PTS"].values + p_games["REB"].values,
+            },
+            {
+                "name": "PTS+REB+AST",
+                "predicted": round(pts_pred + reb_pred + ast_pred, 1),
+                "values": p_games["PTS"].values + p_games["REB"].values + p_games["AST"].values,
+            },
+        ]
+
+        for combo in combos:
+            pred_val = combo["predicted"]
+            hist_values = combo["values"]
+            avg_actual = round(float(hist_values.mean()), 1)
+
+            # Use predicted value as the line (rounded to nearest 0.5)
+            line = round(pred_val * 2) / 2
+            over_rate = float((hist_values > line).mean())
+            under_rate = float((hist_values < line).mean())
+
+            combined.append({
+                "player_name": player_name,
+                "team": team,
+                "opponent": stats["PTS"]["opponent"],
+                "combo": combo["name"],
+                "predicted": pred_val,
+                "avg_actual": avg_actual,
+                "line": line,
+                "over_rate": round(over_rate * 100, 1),
+                "under_rate": round(under_rate * 100, 1),
+                "games_sampled": len(p_games),
+                "minutes": stats["PTS"]["minutes"],
+            })
+
+    return combined
+
+
+def display_combined_props(combined: list):
+    """Display combined prop predictions with hit rates."""
+    if not combined:
+        return
+
+    print("\n  " + "=" * 72)
+    print("  COMBINED PROP PREDICTIONS (with hit rates)")
+    print("  " + "=" * 72)
+
+    # Group by team
+    by_team = {}
+    for p in combined:
+        by_team.setdefault(p["team"], []).append(p)
+
+    for team, props in sorted(by_team.items()):
+        print(f"\n  {team}:")
+
+        # Group by player, sorted by minutes
+        players_seen = []
+        for p in sorted(props, key=lambda x: -x["minutes"]):
+            if p["player_name"] in players_seen:
+                continue
+            players_seen.append(p["player_name"])
+
+            player_combos = [c for c in props if c["player_name"] == p["player_name"]]
+            print(f"    {p['player_name']} vs {p['opponent']}  "
+                  f"({p['games_sampled']} games)")
+
+            for c in player_combos:
+                if c["over_rate"] >= 55:
+                    direction = "OVER"
+                    rate = c["over_rate"]
+                elif c["under_rate"] >= 55:
+                    direction = "UNDER"
+                    rate = c["under_rate"]
+                else:
+                    direction = "EVEN"
+                    rate = 50.0
+                marker = " <<" if rate >= 65 else ""
+                print(f"      {c['combo']:<12} Pred: {c['predicted']:<7.1f} "
+                      f"Avg: {c['avg_actual']:<7.1f} "
+                      f"Line {c['line']:<7.1f} "
+                      f"O:{c['over_rate']:5.1f}% U:{c['under_rate']:5.1f}% "
+                      f"[{direction}]{marker}")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -601,6 +852,26 @@ def display_game(pred: dict):
     aml_str = f"{aml:+d}" if aml else "-"
 
     print(f"  Lines:  Spread: {spread}  |  O/U: {ou}  |  ML: {ht} {hml_str} / {at} {aml_str}")
+
+    # Show injury adjustments if any
+    if "injury_adjustment" in pred:
+        inj_adj = pred["injury_adjustment"]
+        parts = []
+        if "spread" in inj_adj and inj_adj["spread"] != 0:
+            parts.append(f"Spread adj: {inj_adj['spread']:+.1f}")
+        if "total" in inj_adj and inj_adj["total"] != 0:
+            parts.append(f"Total adj: {inj_adj['total']:+.1f}")
+        if parts:
+            print(f"  Injury: {' | '.join(parts)}")
+
+        # Show which players are out
+        injuries_list = []
+        if inj_adj.get("home_out"):
+            injuries_list.append(f"{ht}: {', '.join(inj_adj['home_out'])}")
+        if inj_adj.get("away_out"):
+            injuries_list.append(f"{at}: {', '.join(inj_adj['away_out'])}")
+        if injuries_list:
+            print(f"  OUT:    {' | '.join(injuries_list)}")
 
     # Show model outputs
     pm = pred.get("predicted_margin")
@@ -721,12 +992,19 @@ def display_player_props(props: list):
 # ═════════════════════════════════════════════════════════════════════════════
 
 def main():
+    import sys
+
     print()
     print("  " + "=" * 72)
     print("  NBA ML PREDICTIONS")
     print("  " + "=" * 72)
     fmt = '%B %d, %Y  %#I:%M %p ET' if platform.system() == "Windows" else '%B %d, %Y  %-I:%M %p ET'
     print(f"  {datetime.now(ET).strftime(fmt)}")
+
+    # Check for manual injury input
+    manual_injuries = None
+    if len(sys.argv) > 1 and sys.argv[1].startswith("--injuries="):
+        manual_injuries = sys.argv[1].split("=", 1)[1]
 
     # ── Load team models ──
     print("\n  Loading models...")
@@ -737,14 +1015,17 @@ def main():
             models[model_name] = model_data
             mtype = model_data.get("model_type", "classifier")
             metrics = model_data.get("metrics", {})
+            is_ensemble = "ensemble" in mtype
 
-            if mtype == "classifier":
+            if "classifier" in mtype:
                 acc = metrics.get("accuracy", 0)
-                print(f"    {model_name}: loaded ({mtype}, accuracy: {acc:.1%})")
+                tag = "ensemble" if is_ensemble else "single"
+                print(f"    {model_name}: loaded ({tag}, accuracy: {acc:.1%})")
             else:
                 mae = metrics.get("mae", 0)
                 dir_acc = metrics.get("direction_accuracy", 0)
-                print(f"    {model_name}: loaded ({mtype}, MAE: {mae:.1f} pts, direction: {dir_acc:.1%})")
+                tag = "ensemble" if is_ensemble else "single"
+                print(f"    {model_name}: loaded ({tag}, MAE: {mae:.1f} pts, direction: {dir_acc:.1%})")
         except FileNotFoundError:
             print(f"    {model_name}: NOT FOUND")
 
@@ -779,6 +1060,23 @@ def main():
 
     print(f"    Found {len(games)} games")
 
+    # ── Fetch injury report ──
+    from .injuries import get_injury_report, print_injury_report
+    injuries = get_injury_report(manual_input=manual_injuries)
+    print_injury_report(injuries)
+
+    # ── Load bias calibration ──
+    calibration = load_calibration()
+    if calibration:
+        print(f"\n  Bias correction loaded:")
+        if "margin_bias" in calibration:
+            print(f"    Margin bias: {calibration['margin_bias']:+.1f} pts")
+        if "total_bias" in calibration:
+            print(f"    Total bias: {calibration['total_bias']:+.1f} pts")
+        if "ml_home_shift" in calibration:
+            print(f"    ML home shift: {calibration['ml_home_shift']:+.3f}")
+        print(f"    Based on {calibration.get('sample_size', '?')} games")
+
     # ── Generate team predictions ──
     all_predictions = []
     all_picks = []
@@ -786,7 +1084,8 @@ def main():
     for game in games:
         pred = predict_game(
             game["home_team"], game["away_team"],
-            game, models, feature_df
+            game, models, feature_df, injuries,
+            calibration=calibration
         )
         all_predictions.append(pred)
 
@@ -810,9 +1109,14 @@ def main():
     # ── Player props ──
     from .config import PLAYER_GAME_LOGS_CSV
     player_props = predict_player_props(
-        prop_models, PLAYER_GAME_LOGS_CSV, games, feature_df
+        prop_models, PLAYER_GAME_LOGS_CSV, games, feature_df,
+        injuries=injuries
     )
     display_player_props(player_props)
+
+    # ── Combined props with hit rates ──
+    combined_props = compute_combined_props(player_props, PLAYER_GAME_LOGS_CSV)
+    display_combined_props(combined_props)
 
     print()
 

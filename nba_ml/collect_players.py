@@ -42,7 +42,69 @@ def fetch_player_season(season_year: int) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+KEEP_COLS = [
+    "SEASON_ID", "PLAYER_ID", "PLAYER_NAME",
+    "TEAM_ID", "TEAM_ABBREVIATION",
+    "GAME_ID", "GAME_DATE",
+    "MIN", "PTS", "REB", "AST", "STL", "BLK", "TOV",
+    "FGM", "FGA", "FG_PCT",
+    "FG3M", "FG3A", "FG3_PCT",
+    "FTM", "FTA", "FT_PCT",
+    "PLUS_MINUS",
+]
+
+
+def update_current_season():
+    """
+    Fast incremental update: re-fetch only the current season and merge
+    into the existing CSV.
+    """
+    print("=" * 60)
+    print("NBA Player Data — Incremental Update (current season only)")
+    print("=" * 60)
+
+    if not PLAYER_GAME_LOGS_CSV.exists():
+        print("No existing data found. Run full collection first.")
+        return
+
+    existing = pd.read_csv(PLAYER_GAME_LOGS_CSV)
+    before = len(existing)
+    existing["GAME_DATE"] = pd.to_datetime(existing["GAME_DATE"])
+    print(f"Existing rows: {before:,}  (latest: {existing['GAME_DATE'].max().date()})")
+
+    print(f"\nFetching {END_SEASON - 1}-{str(END_SEASON)[2:]} season...")
+    df = fetch_player_season(END_SEASON)
+    if df.empty:
+        print("Could not fetch current season data.")
+        return
+
+    available_cols = [c for c in KEEP_COLS if c in df.columns]
+    df = df[available_cols].copy()
+    df["GAME_DATE"] = pd.to_datetime(df["GAME_DATE"])
+    print(f"  API returned {len(df):,} player-game rows for current season")
+
+    # Determine current season ID to drop old rows
+    current_season_id = df["SEASON_ID"].iloc[0] if "SEASON_ID" in df.columns else None
+    if current_season_id is not None:
+        existing = existing[existing["SEASON_ID"] != current_season_id]
+
+    combined = pd.concat([existing, df], ignore_index=True)
+    combined = combined.sort_values(["GAME_DATE", "GAME_ID", "TEAM_ABBREVIATION"]).reset_index(drop=True)
+
+    added = len(combined) - before
+    print(f"\nNew rows added: {added:,}")
+    print(f"Updated date range: {combined['GAME_DATE'].min().date()} to {combined['GAME_DATE'].max().date()}")
+
+    combined.to_csv(PLAYER_GAME_LOGS_CSV, index=False)
+    print(f"Saved to: {PLAYER_GAME_LOGS_CSV}")
+
+
 def main():
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] in ("--update", "-u"):
+        update_current_season()
+        return
+
     print("=" * 60)
     print("NBA Player Game Log Collection")
     print("=" * 60)
@@ -59,19 +121,7 @@ def main():
             print(f"    No data")
             continue
 
-        # Keep only essential columns to save space
-        keep_cols = [
-            "SEASON_ID", "PLAYER_ID", "PLAYER_NAME",
-            "TEAM_ID", "TEAM_ABBREVIATION",
-            "GAME_ID", "GAME_DATE",
-            "MIN", "PTS", "REB", "AST", "STL", "BLK", "TOV",
-            "FGM", "FGA", "FG_PCT",
-            "FG3M", "FG3A", "FG3_PCT",
-            "FTM", "FTA", "FT_PCT",
-            "PLUS_MINUS",
-        ]
-
-        available_cols = [c for c in keep_cols if c in df.columns]
+        available_cols = [c for c in KEEP_COLS if c in df.columns]
         df = df[available_cols].copy()
 
         print(f"    Found {len(df):,} player-game rows")

@@ -31,6 +31,10 @@ from .config import (
     ROLLING_WINDOWS,
     MIN_GAMES_FOR_FEATURES,
     TEAM_COORDINATES,
+    ELO_K_FACTOR,
+    ELO_INITIAL,
+    ELO_SEASON_REVERSION,
+    ELO_HOME_ADVANTAGE,
 )
 
 
@@ -72,6 +76,162 @@ def get_timezone_diff(team1: str, team2: str) -> int:
     tz1 = tz_map.get(team1, -6)
     tz2 = tz_map.get(team2, -6)
     return abs(tz1 - tz2)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# ELO POWER RATINGS
+# ═════════════════════════════════════════════════════════════════════════════
+
+def compute_elo_ratings(df: pd.DataFrame) -> dict:
+    """
+    Compute dynamic ELO ratings for all teams across all games.
+
+    Uses margin-of-victory multiplier and season regression.
+    Returns dict mapping (team, game_id) -> elo_before_game.
+    """
+    df = df.sort_values("date").reset_index(drop=True)
+
+    # Current ELO for each team
+    elo = {}
+    # Store ELO *before* each game for each team
+    elo_lookup = {}
+    current_season = None
+
+    for _, row in tqdm(df.iterrows(), total=len(df), desc="Computing ELO ratings"):
+        home = row["home_team"]
+        away = row["away_team"]
+        season = row["season"]
+
+        # Season reset: regress toward mean
+        if season != current_season:
+            current_season = season
+            for team in list(elo.keys()):
+                elo[team] = ELO_INITIAL + (elo[team] - ELO_INITIAL) * (1 - ELO_SEASON_REVERSION)
+
+        # Initialize new teams
+        if home not in elo:
+            elo[home] = ELO_INITIAL
+        if away not in elo:
+            elo[away] = ELO_INITIAL
+
+        # Store pre-game ELO
+        home_elo = elo[home]
+        away_elo = elo[away]
+        elo_lookup[(home, row["game_id"])] = home_elo
+        elo_lookup[(away, row["game_id"])] = away_elo
+
+        # Expected scores (with home advantage baked in)
+        elo_diff = home_elo - away_elo + ELO_HOME_ADVANTAGE
+        expected_home = 1.0 / (1.0 + 10 ** (-elo_diff / 400))
+
+        # Actual result
+        home_win = row["home_win"]
+        margin = row["home_margin"]
+
+        # Margin of victory multiplier (from FiveThirtyEight formula)
+        # Dampens the effect when strong teams blow out weak teams
+        abs_margin = abs(margin)
+        mov_multiplier = math.log(abs_margin + 1) * (2.2 / (abs(home_elo - away_elo) * 0.001 + 2.2))
+
+        # Update ELO
+        update = ELO_K_FACTOR * mov_multiplier * (home_win - expected_home)
+        elo[home] += update
+        elo[away] -= update
+
+    print(f"  Computed ELO for {len(elo)} teams across {len(df):,} games")
+
+    # Show current top/bottom teams
+    sorted_elo = sorted(elo.items(), key=lambda x: x[1], reverse=True)
+    print(f"  Top 5: {', '.join(f'{t} ({e:.0f})' for t, e in sorted_elo[:5])}")
+    print(f"  Bottom 5: {', '.join(f'{t} ({e:.0f})' for t, e in sorted_elo[-5:])}")
+
+    return elo_lookup
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# FOUR FACTORS OF BASKETBALL
+# ═════════════════════════════════════════════════════════════════════════════
+
+def compute_four_factors(row: pd.Series, prefix: str) -> dict:
+    """
+    Compute the Four Factors and pace-based metrics for one team's game.
+
+    The Four Factors (Dean Oliver):
+      1. eFG% - Effective field goal percentage
+      2. TOV% - Turnover percentage
+      3. OREB% - Offensive rebound percentage
+      4. FT Rate - Free throw rate
+
+    Also computes:
+      - Estimated pace (possessions)
+      - Offensive rating (points per 100 possessions)
+      - Defensive rating (opponent points per 100 possessions)
+      - Net rating (off_rating - def_rating)
+      - True shooting percentage
+
+    Args:
+        row: Game row with raw box score data
+        prefix: "home" or "away" to select columns
+    """
+    opp = "away" if prefix == "home" else "home"
+
+    fgm = row.get(f"{prefix}_fg_made", 0) or 0
+    fga = row.get(f"{prefix}_fg_att", 0) or 0
+    fg3m = row.get(f"{prefix}_fg3_made", 0) or 0
+    ftm = row.get(f"{prefix}_ft_made", 0) or 0
+    fta = row.get(f"{prefix}_ft_att", 0) or 0
+    oreb = row.get(f"{prefix}_oreb", 0) or 0
+    tov = row.get(f"{prefix}_tov", 0) or 0
+    pts = row.get(f"{prefix}_score", 0) or 0
+    opp_pts = row.get(f"{opp}_score", 0) or 0
+    opp_dreb = row.get(f"{opp}_dreb", 0) or 0
+    opp_fga = row.get(f"{opp}_fg_att", 0) or 0
+    opp_fta = row.get(f"{opp}_ft_att", 0) or 0
+    opp_oreb = row.get(f"{opp}_oreb", 0) or 0
+    opp_tov = row.get(f"{opp}_tov", 0) or 0
+
+    factors = {}
+
+    # Four Factors
+    if fga > 0:
+        factors["efg_pct"] = (fgm + 0.5 * fg3m) / fga
+        factors["ft_rate"] = ftm / fga
+    else:
+        factors["efg_pct"] = 0.0
+        factors["ft_rate"] = 0.0
+
+    possessions = fga + 0.44 * fta - oreb + tov
+    if possessions > 0:
+        factors["tov_pct"] = tov / possessions
+    else:
+        factors["tov_pct"] = 0.0
+
+    total_reb_chance = oreb + opp_dreb
+    if total_reb_chance > 0:
+        factors["oreb_pct"] = oreb / total_reb_chance
+    else:
+        factors["oreb_pct"] = 0.0
+
+    # Pace and ratings
+    opp_possessions = opp_fga + 0.44 * opp_fta - opp_oreb + opp_tov
+    avg_pace = (possessions + opp_possessions) / 2 if (possessions + opp_possessions) > 0 else 90
+
+    factors["pace"] = avg_pace
+
+    if avg_pace > 0:
+        factors["off_rating"] = pts / avg_pace * 100
+        factors["def_rating"] = opp_pts / avg_pace * 100
+        factors["net_rating"] = factors["off_rating"] - factors["def_rating"]
+    else:
+        factors["off_rating"] = 100.0
+        factors["def_rating"] = 100.0
+        factors["net_rating"] = 0.0
+
+    # True shooting percentage
+    tsa = fga + 0.44 * fta
+    factors["ts_pct"] = pts / (2 * tsa) if tsa > 0 else 0.0
+
+    return factors
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -352,6 +512,18 @@ def calculate_rolling_stats(team_games: pd.DataFrame, windows: list) -> pd.DataF
             stats[f"scoring_hhi{suffix}"] = team_games["scoring_hhi"].rolling(w, min_periods=1).mean()
             stats[f"double_digit_scorers{suffix}"] = team_games["double_digit_scorers"].rolling(w, min_periods=1).mean()
 
+        # Four Factors rolling (if available)
+        if "efg_pct" in team_games.columns:
+            stats[f"efg_pct{suffix}"] = team_games["efg_pct"].rolling(w, min_periods=1).mean()
+            stats[f"tov_pct{suffix}"] = team_games["tov_pct"].rolling(w, min_periods=1).mean()
+            stats[f"oreb_pct{suffix}"] = team_games["oreb_pct"].rolling(w, min_periods=1).mean()
+            stats[f"ft_rate{suffix}"] = team_games["ft_rate"].rolling(w, min_periods=1).mean()
+            stats[f"pace{suffix}"] = team_games["pace"].rolling(w, min_periods=1).mean()
+            stats[f"off_rating_adv{suffix}"] = team_games["off_rating"].rolling(w, min_periods=1).mean()
+            stats[f"def_rating_adv{suffix}"] = team_games["def_rating"].rolling(w, min_periods=1).mean()
+            stats[f"net_rating{suffix}"] = team_games["net_rating"].rolling(w, min_periods=1).mean()
+            stats[f"ts_pct{suffix}"] = team_games["ts_pct"].rolling(w, min_periods=1).mean()
+
     return pd.DataFrame(stats)
 
 
@@ -487,6 +659,9 @@ def build_team_game_history(df: pd.DataFrame, player_metrics: dict = None) -> di
     """
     Build a dictionary of each team's game history with stats.
 
+    Includes Four Factors (eFG%, TOV%, OREB%, FT Rate) and
+    pace-based ratings (off/def/net rating per 100 possessions).
+
     Args:
         df: Game-level DataFrame
         player_metrics: Pre-computed player metrics dict (optional)
@@ -494,12 +669,23 @@ def build_team_game_history(df: pd.DataFrame, player_metrics: dict = None) -> di
     Returns:
         {team_abbr: DataFrame with game-by-game stats}
     """
+    # Pre-compute Four Factors for every game row (both home and away)
+    print("  Computing Four Factors for all games...")
+    home_factors_list = []
+    away_factors_list = []
+    for _, row in df.iterrows():
+        home_factors_list.append(compute_four_factors(row, "home"))
+        away_factors_list.append(compute_four_factors(row, "away"))
+    home_factors_df = pd.DataFrame(home_factors_list, index=df.index)
+    away_factors_df = pd.DataFrame(away_factors_list, index=df.index)
+
     team_histories = {}
     all_teams = set(df["home_team"].unique()) | set(df["away_team"].unique())
 
     for team in tqdm(all_teams, desc="Building team histories"):
         # Home games
-        home_games = df[df["home_team"] == team].copy()
+        home_mask = df["home_team"] == team
+        home_games = df[home_mask].copy()
         home_games["is_home"] = 1
         home_games["pts"] = home_games["home_score"]
         home_games["opp_pts"] = home_games["away_score"]
@@ -512,9 +698,13 @@ def build_team_game_history(df: pd.DataFrame, player_metrics: dict = None) -> di
         home_games["tov"] = home_games["home_tov"]
         home_games["won"] = home_games["home_win"]
         home_games["opponent"] = home_games["away_team"]
+        # Four Factors for this team when playing at home
+        for col in home_factors_df.columns:
+            home_games[col] = home_factors_df.loc[home_mask, col].values
 
         # Away games
-        away_games = df[df["away_team"] == team].copy()
+        away_mask = df["away_team"] == team
+        away_games = df[away_mask].copy()
         away_games["is_home"] = 0
         away_games["pts"] = away_games["away_score"]
         away_games["opp_pts"] = away_games["home_score"]
@@ -527,6 +717,9 @@ def build_team_game_history(df: pd.DataFrame, player_metrics: dict = None) -> di
         away_games["tov"] = away_games["away_tov"]
         away_games["won"] = 1 - away_games["home_win"]
         away_games["opponent"] = away_games["home_team"]
+        # Four Factors for this team when playing away
+        for col in away_factors_df.columns:
+            away_games[col] = away_factors_df.loc[away_mask, col].values
 
         # Merge player metrics if available
         if player_metrics:
@@ -637,8 +830,13 @@ def build_training_features(df: pd.DataFrame, player_metrics: dict = None,
 
     For each game, calculate rolling features for both teams
     using only data available BEFORE that game.
+    Includes ELO ratings and Four Factors.
     """
-    print("Building team game histories...")
+    # Compute ELO ratings across all games
+    print("Computing ELO ratings...")
+    elo_lookup = compute_elo_ratings(df)
+
+    print("\nBuilding team game histories...")
     team_histories = build_team_game_history(df, player_metrics)
 
     print(f"\nGenerating features for {len(df):,} games...")
@@ -677,6 +875,14 @@ def build_training_features(df: pd.DataFrame, player_metrics: dict = None,
             is_home=False, opponent=row["home_team"]
         )
         game_features.update(away_feats)
+
+        # ── ELO ratings ──
+        home_elo = elo_lookup.get((row["home_team"], row["game_id"]), ELO_INITIAL)
+        away_elo = elo_lookup.get((row["away_team"], row["game_id"]), ELO_INITIAL)
+        game_features["home_elo"] = home_elo
+        game_features["away_elo"] = away_elo
+        game_features["elo_diff"] = home_elo - away_elo
+        game_features["elo_expected"] = 1.0 / (1.0 + 10 ** (-(home_elo - away_elo + ELO_HOME_ADVANTAGE) / 400))
 
         # ── Travel distance ──
         game_features["travel_distance"] = get_travel_distance(
@@ -776,6 +982,37 @@ def build_training_features(df: pd.DataFrame, player_metrics: dict = None,
             game_features["momentum_diff"] = (
                 game_features.get("home_margin_momentum", 0) -
                 game_features.get("away_margin_momentum", 0)
+            )
+
+        # Four Factors differentials (if available)
+        if "home_efg_pct_l10" in game_features and "away_efg_pct_l10" in game_features:
+            game_features["efg_pct_diff_l10"] = (
+                game_features.get("home_efg_pct_l10", 0.5) -
+                game_features.get("away_efg_pct_l10", 0.5)
+            )
+            game_features["tov_pct_diff_l10"] = (
+                game_features.get("away_tov_pct_l10", 0.15) -
+                game_features.get("home_tov_pct_l10", 0.15)
+            )  # Reversed: opponent's higher TOV% is good for us
+            game_features["oreb_pct_diff_l10"] = (
+                game_features.get("home_oreb_pct_l10", 0.25) -
+                game_features.get("away_oreb_pct_l10", 0.25)
+            )
+            game_features["ft_rate_diff_l10"] = (
+                game_features.get("home_ft_rate_l10", 0.2) -
+                game_features.get("away_ft_rate_l10", 0.2)
+            )
+            game_features["net_rating_diff_l10"] = (
+                game_features.get("home_net_rating_l10", 0) -
+                game_features.get("away_net_rating_l10", 0)
+            )
+            game_features["pace_avg_l10"] = (
+                game_features.get("home_pace_l10", 95) +
+                game_features.get("away_pace_l10", 95)
+            ) / 2
+            game_features["ts_pct_diff_l10"] = (
+                game_features.get("home_ts_pct_l10", 0.55) -
+                game_features.get("away_ts_pct_l10", 0.55)
             )
 
         # Player-level differentials (if available)

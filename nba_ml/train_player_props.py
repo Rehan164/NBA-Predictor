@@ -33,8 +33,8 @@ from .config import (
 PLAYER_PROPS_DIR = MODELS_DIR / "player_props"
 
 # Training config
-TRAIN_CUTOFF = "2022-07-01"
-TEST_CUTOFF = "2022-10-01"
+TRAIN_CUTOFF = "2025-07-01"
+TEST_CUTOFF = "2025-10-01"
 CV_FOLDS = 5
 N_TRIALS = 60  # Fewer trials than team models since there's more data
 
@@ -95,6 +95,12 @@ def compute_player_weights(n_samples):
     than team models because individual development matters more.
     """
     weights = np.array([PLAYER_WEIGHT_DECAY ** (n_samples - 1 - i) for i in range(n_samples)])
+
+    # Prevent numerical underflow: clip to minimum weight
+    # With large datasets, oldest samples can underflow to 0, causing XGBoost errors
+    min_weight = 1e-6
+    weights = np.clip(weights, min_weight, None)
+
     weights = weights / weights.mean()  # Normalize so mean = 1
     return weights
 

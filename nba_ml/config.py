@@ -37,11 +37,18 @@ NBA_API_DELAY = 0.6  # seconds between requests (slightly under 1/sec to be safe
 ROLLING_WINDOWS = [3, 5, 10, 15, 20]  # More granular windows for better patterns
 MIN_GAMES_FOR_FEATURES = 10   # Minimum games before calculating features
 
+# ── ELO Ratings ─────────────────────────────────────────────────────────
+
+ELO_INITIAL = 1500            # Starting ELO for new teams
+ELO_K_FACTOR = 20             # How much each game matters
+ELO_SEASON_REVERSION = 0.33   # Regress 1/3 toward mean each season
+ELO_HOME_ADVANTAGE = 50       # Home court ELO bonus (~2.5 points, modern NBA)
+
 # ── Model Training ───────────────────────────────────────────────────────────
 
 # Chronological train/test split
-TRAIN_END_DATE = "2022-07-01"    # Train on data before this date
-TEST_START_DATE = "2022-10-01"  # Test on data after this date
+TRAIN_END_DATE = "2025-07-01"    # Train on data before this date
+TEST_START_DATE = "2025-10-01"  # Test on data after this date
 
 # Cross-validation
 CV_FOLDS = 7  # More folds for robust validation
@@ -51,21 +58,21 @@ RANDOM_STATE = 42
 # Phase 1: QMC exploration (wide ranges, find promising regions)
 # Phase 2: TPE exploitation (narrow around best, Bayesian optimization)
 # Phase 3: CMA-ES polish (evolution strategy, fine-tune continuous params)
-OPTUNA_PHASE1_TRIALS = 40   # QMC broad exploration
-OPTUNA_PHASE2_TRIALS = 80   # TPE focused search
-OPTUNA_PHASE3_TRIALS = 30   # CMA-ES final polish
-OPTUNA_TRIALS = OPTUNA_PHASE1_TRIALS + OPTUNA_PHASE2_TRIALS + OPTUNA_PHASE3_TRIALS  # Total: 150
+OPTUNA_PHASE1_TRIALS = 25   # QMC broad exploration
+OPTUNA_PHASE2_TRIALS = 40   # TPE focused search
+OPTUNA_PHASE3_TRIALS = 15   # CMA-ES final polish
+OPTUNA_TRIALS = OPTUNA_PHASE1_TRIALS + OPTUNA_PHASE2_TRIALS + OPTUNA_PHASE3_TRIALS  # Total: 80 per base model
 
 # Early stopping (prevents overfitting, allows more trees)
 EARLY_STOPPING_ROUNDS = 50
 
 # Sample weighting (recent seasons matter more — older eras less predictive)
 USE_SAMPLE_WEIGHTS = True
-WEIGHT_DECAY = 0.9985        # Team model: per-game decay
-                              #   1 season ago → 88% weight
-                              #   5 seasons   → 54%
-                              #   10 seasons  → 29%
-                              #   20 seasons  → 9%
+WEIGHT_DECAY = 0.9940        # Team model: per-game decay
+                              #   1 season ago → 56% weight
+                              #   3 seasons   → 18%
+                              #   5 seasons   → 6%
+                              #   10 seasons  → 0.3%
 PLAYER_WEIGHT_DECAY = 0.9975  # Player props: more aggressive (players develop/decline)
                               #   1 season ago → 81% weight
                               #   5 seasons   → 36%
