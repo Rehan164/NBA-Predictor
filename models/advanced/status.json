@@ -1,0 +1,17 @@
+{
+  "trained": true,
+  "trained_at": "2026-04-01T02:18:03.440988",
+  "metrics": {
+    "win_accuracy": 0.6613,
+    "margin_mae": 11.2,
+    "margin_direction": 0.664,
+    "total_mae": 15.64,
+    "log_loss": 0.6105,
+    "train_samples": 28019,
+    "val_samples": 105,
+    "test_samples": 1110,
+    "epochs_trained": 19
+  },
+  "last_learned": "2026-04-01T02:28:05.596947",
+  "learn_history_count": 2
+}

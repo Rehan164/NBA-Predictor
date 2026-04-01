@@ -73,6 +73,10 @@ _headshots_teams: set = set()
 _analysis_job = {"status": "idle", "log": [], "result": None, "error": None}
 _analysis_lock = threading.Lock()
 
+# ── Model training job state ─────────────────────────────────────────────
+_model_job = {"status": "idle", "log": [], "error": None}
+_model_lock = threading.Lock()
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -972,6 +976,112 @@ def api_analysis_reset():
     with _analysis_lock:
         _analysis_job = {"status": "idle", "log": [], "result": None, "error": None}
     return jsonify({"ok": True})
+
+
+# ── Model Page ────────────────────────────────────────────────────────────
+
+@app.route("/model")
+def model_page():
+    return render_template("model.html", date=datetime.now(ET).strftime("%A, %B %d, %Y"))
+
+
+@app.route("/api/model/status")
+def api_model_status():
+    try:
+        from nba_ml.advanced_model import get_model_status
+        status = get_model_status()
+    except Exception as e:
+        status = {"trained": False, "error": str(e)}
+
+    # Merge training-in-progress flag
+    with _model_lock:
+        status["training_in_progress"] = _model_job["status"] == "running"
+
+    return jsonify(status)
+
+
+@app.route("/api/model/train", methods=["POST"])
+def api_model_train():
+    global _model_job
+    with _model_lock:
+        if _model_job["status"] == "running":
+            return jsonify({"error": "Training already in progress"}), 409
+        _model_job = {"status": "running", "log": [], "error": None}
+
+    def _run():
+        global _model_job
+        try:
+            import torch
+            import numpy as np
+            from nba_ml.advanced_model import train_model, save_model, RANDOM_STATE
+
+            torch.manual_seed(RANDOM_STATE)
+            np.random.seed(RANDOM_STATE)
+
+            def progress(msg):
+                _model_job["log"].append(msg)
+
+            model, metrics, norm_params = train_model(progress_callback=progress)
+            save_model(model, metrics, norm_params)
+            _model_job["log"].append("TRAINING COMPLETE")
+            _model_job["status"] = "done"
+        except Exception as e:
+            import traceback
+            _model_job["error"] = str(e)
+            _model_job["log"].append(f"ERROR: {e}")
+            _model_job["log"].append(traceback.format_exc())
+            _model_job["status"] = "error"
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/model/train/status")
+def api_model_train_status():
+    return jsonify(_model_job)
+
+
+@app.route("/api/model/learn", methods=["POST"])
+def api_model_learn():
+    """Fine-tune model on yesterday's actual results."""
+    try:
+        from nba_ml.advanced_model import learn_from_results
+        target_date = None
+        if request.is_json and request.json.get("date"):
+            target_date = request.json["date"]
+        result = learn_from_results(target_date=target_date)
+        return jsonify(result)
+    except Exception as e:
+        import traceback
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
+
+@app.route("/api/model/predict")
+def api_model_predict():
+    try:
+        from nba_ml.advanced_model import predict_today
+        preds = predict_today()
+        return jsonify(preds)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/model/update-data", methods=["POST"])
+def api_model_update_data():
+    try:
+        from nba_ml.collect_data import update_current_season as update_games
+        from nba_ml.collect_players import update_current_season as update_players
+
+        update_games()
+        update_players()
+
+        # Invalidate player logs cache
+        global _player_logs
+        _player_logs = None
+
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 if __name__ == "__main__":

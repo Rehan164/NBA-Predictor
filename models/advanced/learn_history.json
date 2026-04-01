@@ -1,0 +1,16 @@
+[
+  {
+    "date": "20260331",
+    "learned_at": "2026-04-01T02:26:25.371376",
+    "games": 7,
+    "accuracy_before": 0.5714,
+    "accuracy_after": 0.5714
+  },
+  {
+    "date": "20260331",
+    "learned_at": "2026-04-01T02:28:05.596947",
+    "games": 7,
+    "accuracy_before": 0.5714,
+    "accuracy_after": 0.5714
+  }
+]

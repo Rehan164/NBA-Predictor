@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NBA Model</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* ── Model Page Styles ─────────────────────────────────────────── */
+    .model-grid {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .model-grid > .full-width { grid-column: 1 / -1; }
+
+    /* Status Card */
+    .status-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+    }
+    .status-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.active   { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .status-dot.behind   { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+    .status-dot.inactive { background: var(--text-muted); }
+    .status-dot.training { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse-dot 1.2s infinite; }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .status-title { font-size: 15px; font-weight: 600; }
+    .status-subtitle { font-size: 12px; color: var(--text-muted); }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .status-stat {
+      background: var(--bg);
+      border-radius: var(--radius-sm);
+      padding: 12px;
+      text-align: center;
+    }
+    .status-stat-val {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .status-stat-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .status-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-model {
+      padding: 8px 18px;
+      border-radius: var(--radius-sm);
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition);
+    }
+    .btn-model:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .btn-train {
+      background: var(--accent);
+      color: #fff;
+    }
+    .btn-train:hover:not(:disabled) { background: var(--accent-dim); }
+    .btn-update-data {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-update-data:hover:not(:disabled) { border-color: var(--accent); }
+    .btn-predict {
+      background: var(--green);
+      color: #000;
+    }
+    .btn-predict:hover:not(:disabled) { opacity: 0.85; }
+
+    /* Training Log */
+    .train-log {
+      background: #0a0a0e;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      max-height: 260px;
+      overflow-y: auto;
+      font-family: "SF Mono", "Consolas", monospace;
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.7;
+      display: none;
+    }
+    .train-log.visible { display: block; }
+    .train-log .log-line { white-space: pre-wrap; }
+    .train-log .log-line.info  { color: var(--accent); }
+    .train-log .log-line.good  { color: var(--green); }
+    .train-log .log-line.error { color: var(--red); }
+
+    /* Predictions Section */
+    .pred-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      transition: var(--transition);
+    }
+    .pred-card:hover { border-color: var(--border-light); }
+
+    .pred-matchup {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .pred-teams {
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .pred-confidence {
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .pred-confidence.high   { background: rgba(34,197,94,0.15); color: var(--green); }
+    .pred-confidence.medium { background: rgba(234,179,8,0.15); color: var(--yellow); }
+    .pred-confidence.low    { background: rgba(107,107,138,0.15); color: var(--text-muted); }
+
+    .pred-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .pred-stat {
+      text-align: center;
+      background: var(--bg);
+      border-radius: var(--radius-sm);
+      padding: 8px 6px;
+    }
+    .pred-stat-val { font-size: 16px; font-weight: 700; }
+    .pred-stat-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; }
+
+    .pred-picks {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .pred-pick {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--bg);
+      border-radius: var(--radius-sm);
+      border-left: 3px solid transparent;
+    }
+    .pred-pick.strong { border-left-color: var(--green); }
+    .pred-pick.moderate { border-left-color: var(--yellow); }
+    .pred-pick-name { font-size: 13px; font-weight: 600; }
+    .pred-pick-type { font-size: 11px; color: var(--text-muted); margin-left: 6px; }
+    .pred-pick-conf { font-size: 12px; font-weight: 600; }
+
+    .pred-odds {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .pred-odds-chip {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(99,102,241,0.1);
+      color: var(--accent);
+    }
+
+    .pred-injury-note {
+      margin-top: 8px;
+      font-size: 11px;
+      color: var(--red);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Empty state */
+    .model-empty {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-muted);
+    }
+    .model-empty svg { margin-bottom: 12px; opacity: 0.4; }
+    .model-empty p { font-size: 13px; }
+
+    /* Spinner */
+    .model-spinner {
+      width: 18px; height: 18px;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Learn results table */
+    .learn-results {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      display: none;
+    }
+    .learn-results.visible { display: block; }
+    .learn-summary {
+      display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap;
+    }
+    .learn-summary-stat {
+      padding: 8px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--bg);
+      text-align: center;
+    }
+    .learn-summary-val { font-size: 18px; font-weight: 700; }
+    .learn-summary-label { font-size: 11px; color: var(--text-muted); }
+    .learn-game-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+      font-size: 13px;
+    }
+    .learn-game-row:last-child { border-bottom: none; }
+    .learn-correct { color: var(--green); font-weight: 600; }
+    .learn-wrong { color: var(--red); font-weight: 600; }
+
+    @media (max-width: 700px) {
+      .model-grid { grid-template-columns: 1fr; padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-dot"></div>
+        NBA Predictor
+      </div>
+      <span class="header-date">{{ date }}</span>
+      <div class="header-spacer"></div>
+      <a href="/" class="nav-link">Dashboard</a>
+      <a href="/analysis" class="nav-link">AI Analysis</a>
+      <a href="/live" class="nav-link">Live Tracker</a>
+      <a href="/money" class="nav-link">Money</a>
+      <a href="/model" class="nav-link active">Model</a>
+    </div>
+  </header>
+
+  <div class="model-grid">
+
+    <!-- Status Card (full width) -->
+    <div class="status-card full-width">
+      <div class="status-header">
+        <div id="status-dot" class="status-dot inactive"></div>
+        <div>
+          <div id="status-title" class="status-title">Loading...</div>
+          <div id="status-subtitle" class="status-subtitle"></div>
+        </div>
+      </div>
+
+      <div class="status-grid" id="metrics-grid">
+        <div class="status-stat">
+          <div class="status-stat-val" id="metric-accuracy">—</div>
+          <div class="status-stat-label">Win Accuracy</div>
+        </div>
+        <div class="status-stat">
+          <div class="status-stat-val" id="metric-margin">—</div>
+          <div class="status-stat-label">Margin MAE</div>
+        </div>
+        <div class="status-stat">
+          <div class="status-stat-val" id="metric-total">—</div>
+          <div class="status-stat-label">Total MAE</div>
+        </div>
+        <div class="status-stat">
+          <div class="status-stat-val" id="metric-direction">—</div>
+          <div class="status-stat-label">Direction Acc</div>
+        </div>
+        <div class="status-stat">
+          <div class="status-stat-val" id="metric-logloss">—</div>
+          <div class="status-stat-label">Log Loss</div>
+        </div>
+        <div class="status-stat">
+          <div class="status-stat-val" id="metric-samples">—</div>
+          <div class="status-stat-label">Train Samples</div>
+        </div>
+      </div>
+
+      <div class="status-actions">
+        <button id="btn-update-data" class="btn-model btn-update-data" style="display:none">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+            <path d="M21 3v5h-5"/>
+            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+            <path d="M8 16H3v5"/>
+          </svg>
+          Update Data
+        </button>
+        <button id="btn-train" class="btn-model btn-train">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          Train Model
+        </button>
+        <button id="btn-predict" class="btn-model btn-predict">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+          </svg>
+          Get Today's Picks
+        </button>
+        <button id="btn-learn" class="btn-model" style="background:var(--yellow);color:#000">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+          </svg>
+          Learn from Yesterday
+        </button>
+      </div>
+    </div>
+
+    <!-- Training Log (full width, hidden by default) -->
+    <div id="train-log" class="train-log full-width"></div>
+
+    <!-- Learn Results (full width, hidden by default) -->
+    <div id="learn-results" class="learn-results full-width"></div>
+
+    <!-- Predictions (full width) -->
+    <div class="full-width">
+      <div class="section-header" style="margin-bottom:16px">
+        <h2 class="section-title">Model Predictions</h2>
+        <span id="pred-count" class="section-count" style="display:none">0</span>
+      </div>
+      <div id="predictions-container">
+        <div class="model-empty">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+          </svg>
+          <p>Train the model or click "Get Today's Picks" to see predictions.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/model.js"></script>
+</body>
+</html>
