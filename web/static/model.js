@@ -34,6 +34,7 @@ function renderStatus(s) {
     btnTrain.disabled = true;
     btnPredict.disabled = true;
     showLog();
+    showProgressBar();
     startPollTraining();
     return;
   }
@@ -90,6 +91,7 @@ btnTrain.addEventListener("click", async () => {
   statusTitle.textContent = "Training in Progress";
   statusSubtitle.textContent = "Model is training...";
   showLog();
+  showProgressBar();
   appendLog("Starting model training...", "info");
 
   try {
@@ -135,15 +137,22 @@ async function pollTrainingStatus() {
       appendLog(line, cls);
     }
 
+    // Update progress bar
+    if (s.progress && s.progress.total_games) {
+      updateProgressBar(s.progress);
+    }
+
     if (s.status === "done") {
       clearInterval(pollTimer);
       pollTimer = null;
       appendLog("Training complete!", "good");
+      hideProgressBar();
       loadStatus();
     } else if (s.status === "error") {
       clearInterval(pollTimer);
       pollTimer = null;
       appendLog("Training failed: " + (s.error || "unknown error"), "error");
+      hideProgressBar();
       btnTrain.disabled = false;
       statusDot.className = "status-dot inactive";
       statusTitle.textContent = "Training Failed";
@@ -151,6 +160,37 @@ async function pollTrainingStatus() {
   } catch {
     // Network error, keep polling
   }
+}
+
+/* ── Progress Bar ────────────────────────────────────────────────── */
+
+const progressContainer = document.getElementById("progress-container");
+const progressBar       = document.getElementById("progress-bar");
+const progressLabel     = document.getElementById("progress-label");
+const progressEta       = document.getElementById("progress-eta");
+const progressGames     = document.getElementById("progress-games");
+const progressStats     = document.getElementById("progress-stats");
+
+function showProgressBar() {
+  progressContainer.style.display = "";
+}
+
+function hideProgressBar() {
+  progressContainer.style.display = "none";
+}
+
+function updateProgressBar(p) {
+  showProgressBar();
+  progressBar.style.width = p.pct + "%";
+  progressLabel.textContent = p.phase === "TEST" ? "Testing..." : "Training...";
+  progressEta.textContent = p.eta_display ? `ETA: ${p.eta_display}` : "";
+  progressGames.textContent = `${p.game_idx.toLocaleString()} / ${p.total_games.toLocaleString()} games`;
+
+  const parts = [];
+  if (p.loss != null) parts.push(`Loss: ${p.loss}`);
+  if (p.train_acc != null) parts.push(`Acc: ${p.train_acc}%`);
+  if (p.games_per_sec != null) parts.push(`${p.games_per_sec} games/s`);
+  progressStats.textContent = parts.join(" · ");
 }
 
 /* ── Data Update ──────────────────────────────────────────────────── */

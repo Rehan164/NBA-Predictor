@@ -28,6 +28,7 @@ from .config import (
 ROLLING_WINDOWS = [3, 5, 10, 20]
 MIN_PLAYER_GAMES = 10
 STAT_COLS = ["PTS", "REB", "AST", "MIN", "FGM", "FGA", "FG3M", "FG3A", "FTM", "FTA", "TOV", "STL", "BLK", "PLUS_MINUS"]
+ROTATION_MIN_THRESHOLD = 15  # avg minutes to be considered rotation player
 
 
 def load_data():
@@ -128,8 +129,117 @@ def build_team_defense_profiles(games: pd.DataFrame) -> dict:
     return profiles
 
 
+def build_teammate_context(plr: pd.DataFrame) -> dict:
+    """
+    Build teammate availability context for each player-game.
+
+    For each game, determines which regular rotation players on each team
+    actually played, and computes features about missing teammates.
+
+    Returns dict: (player_id, game_id) -> {n_teammates_missing, missing_pts_share, ...}
+    """
+    print("Building teammate availability context...")
+
+    # Build per-team rotation expectations: rolling avg stats per player
+    # For each team-game, who "should" have played (based on recent history)
+    team_game_players = {}  # (team, game_id) -> set of player_ids who played
+    player_recent_stats = {}  # (player_id, game_id) -> {avg_pts, avg_reb, avg_ast, avg_min}
+
+    # Group by team and sort by date
+    for team, team_df in tqdm(plr.groupby("TEAM_ABBREVIATION"), desc="Teammate context (pass 1)"):
+        team_df = team_df.sort_values("GAME_DATE")
+
+        # Track which players played in each game
+        for game_id, game_group in team_df.groupby("GAME_ID"):
+            team_game_players[(team, game_id)] = set(game_group["PLAYER_ID"].values)
+
+        # Build rolling stats per player for this team
+        for player_id, p_df in team_df.groupby("PLAYER_ID"):
+            p_df = p_df.sort_values("GAME_DATE").reset_index(drop=True)
+            for stat in ["PTS", "REB", "AST", "MIN"]:
+                if stat in p_df.columns:
+                    p_df[f"_roll_{stat}"] = p_df[stat].rolling(10, min_periods=3).mean().shift(1)
+
+            for idx in range(len(p_df)):
+                gid = p_df.iloc[idx]["GAME_ID"]
+                avg_min = p_df.iloc[idx].get("_roll_MIN", 0)
+                if pd.isna(avg_min) or avg_min < ROTATION_MIN_THRESHOLD:
+                    continue
+                player_recent_stats[(player_id, gid)] = {
+                    "avg_pts": p_df.iloc[idx].get("_roll_PTS", 0) or 0,
+                    "avg_reb": p_df.iloc[idx].get("_roll_REB", 0) or 0,
+                    "avg_ast": p_df.iloc[idx].get("_roll_AST", 0) or 0,
+                    "avg_min": avg_min or 0,
+                }
+
+    # Pass 2: for each player-game, compute teammate context
+    print("Building teammate context (pass 2)...")
+    context = {}
+
+    # Build expected rotation per team-game (players with 15+ avg min who SHOULD play)
+    # We use the previous game's roster as expectation
+    team_prev_rotation = {}  # team -> list of (player_id, stats) from last game
+
+    for team, team_df in tqdm(plr.groupby("TEAM_ABBREVIATION"), desc="Teammate context (pass 2)"):
+        team_df = team_df.sort_values("GAME_DATE")
+        game_dates = team_df.drop_duplicates("GAME_ID").sort_values("GAME_DATE")
+
+        prev_rotation = {}  # player_id -> stats
+        for _, gd_row in game_dates.iterrows():
+            gid = gd_row["GAME_ID"]
+            actual_players = team_game_players.get((team, gid), set())
+
+            if prev_rotation:
+                # Who from expected rotation is missing?
+                missing_pts = 0.0
+                missing_reb = 0.0
+                missing_ast = 0.0
+                missing_min = 0.0
+                n_missing = 0
+                total_rotation_pts = sum(s["avg_pts"] for s in prev_rotation.values())
+                total_rotation_reb = sum(s["avg_reb"] for s in prev_rotation.values())
+                total_rotation_ast = sum(s["avg_ast"] for s in prev_rotation.values())
+
+                for pid, stats in prev_rotation.items():
+                    if pid not in actual_players:
+                        n_missing += 1
+                        missing_pts += stats["avg_pts"]
+                        missing_reb += stats["avg_reb"]
+                        missing_ast += stats["avg_ast"]
+                        missing_min += stats["avg_min"]
+
+                n_rotation = len(prev_rotation)
+                ctx = {
+                    "n_teammates_missing": n_missing,
+                    "n_rotation_players": n_rotation,
+                    "missing_pts_total": missing_pts,
+                    "missing_reb_total": missing_reb,
+                    "missing_ast_total": missing_ast,
+                    "missing_min_total": missing_min,
+                    "missing_pts_share": missing_pts / max(total_rotation_pts, 1),
+                    "missing_reb_share": missing_reb / max(total_rotation_reb, 1),
+                    "missing_ast_share": missing_ast / max(total_rotation_ast, 1),
+                    "team_shorthanded": 1 if n_missing >= 2 else 0,
+                }
+
+                # Store for each player on this team in this game
+                for pid in actual_players:
+                    context[(pid, gid)] = ctx
+
+            # Update rotation for next game
+            prev_rotation = {}
+            for pid in actual_players:
+                stats = player_recent_stats.get((pid, gid))
+                if stats:
+                    prev_rotation[pid] = stats
+
+    print(f"  {len(context):,} player-game teammate contexts built")
+    return context
+
+
 def build_features(plr: pd.DataFrame, game_lookup: dict,
-                   defense_profiles: dict) -> pd.DataFrame:
+                   defense_profiles: dict,
+                   teammate_context: dict = None) -> pd.DataFrame:
     """Build the full player-level feature matrix."""
 
     print(f"\nBuilding player features for {plr['PLAYER_ID'].nunique():,} players...")
@@ -242,6 +352,12 @@ def build_features(plr: pd.DataFrame, game_lookup: dict,
                 if pd.notna(v):
                     feat[k] = v
 
+            # Teammate availability context
+            if teammate_context:
+                tm_ctx = teammate_context.get((player_id, game_id), {})
+                for k, v in tm_ctx.items():
+                    feat[k] = v
+
             features_list.append(feat)
 
     print(f"  Skipped {skipped} players with < {MIN_PLAYER_GAMES} games")
@@ -267,8 +383,9 @@ def main():
 
     game_lookup = build_game_lookup(games)
     defense_profiles = build_team_defense_profiles(games)
+    teammate_context = build_teammate_context(plr)
 
-    df = build_features(plr, game_lookup, defense_profiles)
+    df = build_features(plr, game_lookup, defense_profiles, teammate_context)
 
     print(f"\n{'='*60}")
     print("Summary")

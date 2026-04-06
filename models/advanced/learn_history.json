@@ -12,5 +12,82 @@
     "games": 7,
     "accuracy_before": 0.5714,
     "accuracy_after": 0.5714
+  },
+  {
+    "date": "20260331",
+    "learned_at": "2026-04-01T17:48:27.682580",
+    "games": 7,
+    "accuracy_before": 0.7143,
+    "accuracy_after": 0.7143
+  },
+  {
+    "date": "20260331",
+    "learned_at": "2026-04-01T18:16:04.391849",
+    "games": 7,
+    "accuracy_before": 0.7143,
+    "accuracy_after": 0.7143
+  },
+  {
+    "date": "20260401",
+    "learned_at": "2026-04-02T08:49:25.152409",
+    "games": 9,
+    "accuracy_before": 0.6667,
+    "accuracy_after": 0.6667
+  },
+  {
+    "date": "20260401",
+    "learned_at": "2026-04-02T16:32:42.389380",
+    "games": 9,
+    "accuracy_before": 0.7778,
+    "accuracy_after": 0.7778
+  },
+  {
+    "date": "20260402",
+    "learned_at": "2026-04-03T11:23:18.601676",
+    "games": 6,
+    "accuracy_before": 0.8333,
+    "accuracy_after": 0.8333
+  },
+  {
+    "date": "20260402",
+    "learned_at": "2026-04-03T11:23:36.750846",
+    "games": 6,
+    "accuracy_before": 1.0,
+    "accuracy_after": 1.0
+  },
+  {
+    "date": "20260402",
+    "learned_at": "2026-04-03T13:45:34.156183",
+    "games": 6,
+    "accuracy_before": 1.0,
+    "accuracy_after": 1.0
+  },
+  {
+    "date": "20260402",
+    "learned_at": "2026-04-03T22:15:16.085562",
+    "games": 6,
+    "accuracy_before": 1.0,
+    "accuracy_after": 1.0
+  },
+  {
+    "date": "20260403",
+    "learned_at": "2026-04-04T11:02:07.512645",
+    "games": 9,
+    "accuracy_before": 0.8889,
+    "accuracy_after": 0.8889
+  },
+  {
+    "date": "20260404",
+    "learned_at": "2026-04-05T18:54:44.931022",
+    "games": 3,
+    "accuracy_before": 0.6667,
+    "accuracy_after": 0.6667
+  },
+  {
+    "date": "20260405",
+    "learned_at": "2026-04-06T08:46:34.778527",
+    "games": 11,
+    "accuracy_before": 0.7273,
+    "accuracy_after": 0.7273
   }
 ]

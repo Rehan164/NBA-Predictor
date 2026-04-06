@@ -77,6 +77,10 @@ _analysis_lock = threading.Lock()
 _model_job = {"status": "idle", "log": [], "error": None}
 _model_lock = threading.Lock()
 
+# ── Player model training job state ──────────────────────────────────
+_player_model_job = {"status": "idle", "log": [], "error": None}
+_player_model_lock = threading.Lock()
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -1006,14 +1010,14 @@ def api_model_train():
     with _model_lock:
         if _model_job["status"] == "running":
             return jsonify({"error": "Training already in progress"}), 409
-        _model_job = {"status": "running", "log": [], "error": None}
+        _model_job = {"status": "running", "log": [], "error": None, "progress": {}}
 
     def _run():
         global _model_job
         try:
             import torch
             import numpy as np
-            from nba_ml.advanced_model import train_model, save_model, RANDOM_STATE
+            from nba_ml.advanced_model import train_model, RANDOM_STATE
 
             torch.manual_seed(RANDOM_STATE)
             np.random.seed(RANDOM_STATE)
@@ -1021,8 +1025,10 @@ def api_model_train():
             def progress(msg):
                 _model_job["log"].append(msg)
 
-            model, metrics, norm_params = train_model(progress_callback=progress)
-            save_model(model, metrics, norm_params)
+            model, metrics, norm_params = train_model(
+                progress_callback=progress,
+                progress_state=_model_job["progress"],
+            )
             _model_job["log"].append("TRAINING COMPLETE")
             _model_job["status"] = "done"
         except Exception as e:
@@ -1082,6 +1088,81 @@ def api_model_update_data():
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+# ── Player Model Page ────────────────────────────────────────────────
+
+@app.route("/player-model")
+def player_model_page():
+    return render_template("player_model.html", date=datetime.now(ET).strftime("%A, %B %d, %Y"))
+
+
+@app.route("/api/player-model/status")
+def api_player_model_status():
+    try:
+        from nba_ml.player_props_nn import get_model_status
+        status = get_model_status()
+    except Exception as e:
+        status = {"trained": False, "error": str(e)}
+
+    with _player_model_lock:
+        status["training_in_progress"] = _player_model_job["status"] == "running"
+
+    return jsonify(status)
+
+
+@app.route("/api/player-model/train", methods=["POST"])
+def api_player_model_train():
+    global _player_model_job
+    with _player_model_lock:
+        if _player_model_job["status"] == "running":
+            return jsonify({"error": "Training already in progress"}), 409
+        _player_model_job = {"status": "running", "log": [], "error": None, "progress": {}}
+
+    def _run():
+        global _player_model_job
+        try:
+            import torch
+            import numpy as np
+            from nba_ml.player_props_nn import train_model, ENSEMBLE_SEEDS
+
+            torch.manual_seed(ENSEMBLE_SEEDS[0])
+            np.random.seed(ENSEMBLE_SEEDS[0])
+
+            def progress(msg):
+                _player_model_job["log"].append(msg)
+
+            train_model(
+                progress_callback=progress,
+                progress_state=_player_model_job.get("progress"),
+            )
+            _player_model_job["log"].append("TRAINING COMPLETE")
+            _player_model_job["status"] = "done"
+        except Exception as e:
+            import traceback
+            _player_model_job["error"] = str(e)
+            _player_model_job["log"].append(f"ERROR: {e}")
+            _player_model_job["log"].append(traceback.format_exc())
+            _player_model_job["status"] = "error"
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"ok": True})
+
+
+@app.route("/api/player-model/train/status")
+def api_player_model_train_status():
+    return jsonify(_player_model_job)
+
+
+@app.route("/api/player-model/predict")
+def api_player_model_predict():
+    try:
+        from nba_ml.player_props_nn import predict_today
+        preds = predict_today()
+        return jsonify(preds)
+    except Exception as e:
+        import traceback
+        return jsonify([{"error": str(e)}]), 500
 
 
 if __name__ == "__main__":

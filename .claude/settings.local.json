@@ -5,7 +5,8 @@
       "Bash(python -m pip install:*)",
       "Bash(python:*)",
       "WebFetch(domain:site.api.espn.com)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash({ tail:*)"
     ]
   }
 }

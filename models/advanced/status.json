@@ -1,17 +1,14 @@
 {
   "trained": true,
-  "trained_at": "2026-04-01T02:18:03.440988",
+  "trained_at": "2026-04-04T11:11:15.483785",
   "metrics": {
-    "win_accuracy": 0.6613,
-    "margin_mae": 11.2,
-    "margin_direction": 0.664,
-    "total_mae": 15.64,
-    "log_loss": 0.6105,
-    "train_samples": 28019,
-    "val_samples": 105,
-    "test_samples": 1110,
-    "epochs_trained": 19
-  },
-  "last_learned": "2026-04-01T02:28:05.596947",
-  "learn_history_count": 2
+    "win_accuracy": 0.7063,
+    "margin_mae": 10.58,
+    "total_mae": 15.09,
+    "avg_single_accuracy": 0.7064,
+    "ensemble_size": 5,
+    "train_samples": 54862,
+    "test_games": 4841,
+    "total_games_processed": 32272
+  }
 }

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NBA Player Props Model</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    /* ── Player Model Page Styles ──────────────────────────────────── */
+    .pm-grid {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Status Card */
+    .pm-status {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+    }
+    .pm-status-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .pm-status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .pm-status-dot.active   { background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .pm-status-dot.inactive { background: var(--text-muted); }
+    .pm-status-dot.training { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse-dot 1.2s infinite; }
+    @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .pm-status-title { font-size: 15px; font-weight: 600; }
+    .pm-status-subtitle { font-size: 12px; color: var(--text-muted); }
+
+    .pm-metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .pm-metric {
+      background: var(--bg);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      text-align: center;
+    }
+    .pm-metric-val {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .pm-metric-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .pm-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-pm {
+      padding: 8px 18px;
+      border-radius: var(--radius-sm);
+      border: none;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition);
+    }
+    .btn-pm:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-pm.train { background: var(--accent); color: #fff; }
+    .btn-pm.train:hover:not(:disabled) { background: var(--accent-dim); }
+    .btn-pm.predict { background: var(--green); color: #000; }
+    .btn-pm.predict:hover:not(:disabled) { opacity: 0.85; }
+
+    /* Training Log */
+    .pm-log {
+      background: #0a0a0e;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      max-height: 260px;
+      overflow-y: auto;
+      font-family: "SF Mono", "Consolas", monospace;
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.7;
+      display: none;
+    }
+    .pm-log.visible { display: block; }
+    .pm-log .log-line { white-space: pre-wrap; }
+    .pm-log .log-line.info  { color: var(--accent); }
+    .pm-log .log-line.good  { color: var(--green); }
+    .pm-log .log-line.error { color: var(--red); }
+
+    /* Game Cards */
+    .pm-game {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .pm-game-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(99,102,241,0.04);
+    }
+    .pm-game-teams {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+    .pm-game-teams img {
+      width: 28px; height: 28px;
+      object-fit: contain;
+    }
+    .pm-game-time {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Player Table */
+    .pm-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .pm-table th {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 10px 12px;
+      text-align: center;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .pm-table th:first-child { text-align: left; }
+    .pm-table td {
+      padding: 10px 12px;
+      text-align: center;
+      border-bottom: 1px solid rgba(37,37,51,0.5);
+      font-size: 13px;
+    }
+    .pm-table td:first-child { text-align: left; }
+    .pm-table tr:last-child td { border-bottom: none; }
+    .pm-table tr:hover { background: rgba(99,102,241,0.03); }
+
+    .pm-player-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .pm-player-img {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+      background: var(--bg);
+      border: 1px solid var(--border);
+    }
+    .pm-player-name {
+      font-weight: 600;
+      font-size: 13px;
+    }
+    .pm-player-team {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .pm-pred-val {
+      font-weight: 700;
+      font-size: 15px;
+    }
+    .pm-avg-val {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    .pm-diff {
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .pm-diff.up { color: var(--green); }
+    .pm-diff.down { color: var(--red); }
+    .pm-diff.flat { color: var(--text-muted); }
+
+    .pm-injury-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 3px;
+      margin-left: 6px;
+    }
+    .pm-injury-badge.out {
+      background: rgba(239,68,68,0.15);
+      color: var(--red);
+    }
+    .pm-injury-badge.gtd {
+      background: rgba(234,179,8,0.15);
+      color: var(--yellow);
+    }
+
+    /* Team separator row */
+    .pm-team-row td {
+      background: rgba(99,102,241,0.06);
+      font-weight: 700;
+      font-size: 12px;
+      color: var(--accent);
+      text-align: left !important;
+      padding: 6px 12px;
+      letter-spacing: 0.5px;
+    }
+
+    .pm-empty {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--text-muted);
+    }
+    .pm-empty p { font-size: 13px; }
+
+    .pm-spinner {
+      width: 18px; height: 18px;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 700px) {
+      .pm-grid { padding: 16px; }
+      .pm-table th, .pm-table td { padding: 8px 6px; font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <div class="logo">
+        <div class="logo-dot"></div>
+        NBA Predictor
+      </div>
+      <span class="header-date">{{ date }}</span>
+      <div class="header-spacer"></div>
+      <a href="/" class="nav-link">Dashboard</a>
+      <a href="/analysis" class="nav-link">AI Analysis</a>
+      <a href="/live" class="nav-link">Live Tracker</a>
+      <a href="/money" class="nav-link">Money</a>
+      <a href="/model" class="nav-link">Model</a>
+      <a href="/player-model" class="nav-link active">Player Model</a>
+    </div>
+  </header>
+
+  <div class="pm-grid">
+
+    <!-- Status Card -->
+    <div class="pm-status">
+      <div class="pm-status-header">
+        <div id="pm-dot" class="pm-status-dot inactive"></div>
+        <div>
+          <div id="pm-title" class="pm-status-title">Loading...</div>
+          <div id="pm-subtitle" class="pm-status-subtitle"></div>
+        </div>
+      </div>
+
+      <div class="pm-metrics" id="pm-metrics">
+        <div class="pm-metric">
+          <div class="pm-metric-val" id="m-pts-mae">--</div>
+          <div class="pm-metric-label">PTS MAE</div>
+        </div>
+        <div class="pm-metric">
+          <div class="pm-metric-val" id="m-reb-mae">--</div>
+          <div class="pm-metric-label">REB MAE</div>
+        </div>
+        <div class="pm-metric">
+          <div class="pm-metric-val" id="m-ast-mae">--</div>
+          <div class="pm-metric-label">AST MAE</div>
+        </div>
+        <div class="pm-metric">
+          <div class="pm-metric-val" id="m-pts-w3">--</div>
+          <div class="pm-metric-label">PTS Within 3</div>
+        </div>
+        <div class="pm-metric">
+          <div class="pm-metric-val" id="m-reb-w3">--</div>
+          <div class="pm-metric-label">REB Within 3</div>
+        </div>
+        <div class="pm-metric">
+          <div class="pm-metric-val" id="m-ast-w3">--</div>
+          <div class="pm-metric-label">AST Within 3</div>
+        </div>
+        <div class="pm-metric">
+          <div class="pm-metric-val" id="m-ensemble">--</div>
+          <div class="pm-metric-label">Ensemble Size</div>
+        </div>
+        <div class="pm-metric">
+          <div class="pm-metric-val" id="m-features">--</div>
+          <div class="pm-metric-label">Features</div>
+        </div>
+      </div>
+
+      <div class="pm-actions">
+        <button id="btn-train" class="btn-pm train">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          Train Player Model
+        </button>
+        <button id="btn-predict" class="btn-pm predict">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+          </svg>
+          Predict Today's Props
+        </button>
+      </div>
+    </div>
+
+    <!-- Training Log (hidden by default) -->
+    <div id="pm-log" class="pm-log"></div>
+
+    <!-- Predictions Container -->
+    <div id="pm-predictions">
+      <div class="pm-empty">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+        </svg>
+        <p>Train the model or click "Predict Today's Props" to see player predictions.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/static/player_model.js"></script>
+</body>
+</html>
