@@ -122,6 +122,7 @@ def _load_all_data():
     games = games.sort_values("date").reset_index(drop=True)
     logs = pd.read_csv(PLAYER_GAME_LOGS_CSV, low_memory=False)
     logs["GAME_DATE"] = pd.to_datetime(logs["GAME_DATE"])
+    logs = logs.drop_duplicates(subset=["PLAYER_ID", "GAME_ID"], keep="last")
     return games, logs
 
 
@@ -793,6 +794,7 @@ def learn_from_results(target_date=None, progress_callback=None):
 
     logs = pd.read_csv(PLAYER_GAME_LOGS_CSV, low_memory=False)
     logs["GAME_DATE"] = pd.to_datetime(logs["GAME_DATE"])
+    logs = logs.drop_duplicates(subset=["PLAYER_ID", "GAME_ID"], keep="last")
 
     games_data = []; game_labels = []
     for event in espn_data.get("events", []):
@@ -964,6 +966,7 @@ def predict_today(model=None, meta=None):
 
     logs = pd.read_csv(PLAYER_GAME_LOGS_CSV, low_memory=False)
     logs["GAME_DATE"] = pd.to_datetime(logs["GAME_DATE"])
+    logs = logs.drop_duplicates(subset=["PLAYER_ID", "GAME_ID"], keep="last")
 
     predictions = []
 

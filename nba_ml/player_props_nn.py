@@ -658,6 +658,7 @@ def predict_today() -> List[dict]:
     # Load data
     player_logs = pd.read_csv(PLAYER_GAME_LOGS_CSV, low_memory=False)
     player_logs["GAME_DATE"] = pd.to_datetime(player_logs["GAME_DATE"])
+    player_logs = player_logs.drop_duplicates(subset=["PLAYER_ID", "GAME_ID"], keep="last")
 
     games_df = pd.read_csv(HISTORICAL_GAMES_CSV, low_memory=False)
     games_df["date"] = pd.to_datetime(games_df["date"])

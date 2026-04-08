@@ -42,6 +42,11 @@ def load_data():
 
     plr = pd.read_csv(PLAYER_GAME_LOGS_CSV)
     plr["GAME_DATE"] = pd.to_datetime(plr["GAME_DATE"])
+    before = len(plr)
+    plr = plr.drop_duplicates(subset=["PLAYER_ID", "GAME_ID"], keep="last")
+    dupes = before - len(plr)
+    if dupes:
+        print(f"  Dropped {dupes:,} duplicate rows")
 
     for col in STAT_COLS:
         if col in plr.columns:

@@ -8,6 +8,7 @@ const state = {
   modalPlayer: null,
   modalStat: "pts",
   modalLine: null,
+  modalPropOdds: null, // {line, over, under} from Odds API
   chart: null,
   games: [],        // full game objects (with event_id + predictions)
 };
@@ -219,15 +220,12 @@ async function loadProps() {
   }
 }
 
-function getPlayerLine(playerName) {
-  const stat = state.activeStat;
+function _findPropEntry(playerName, stat) {
   if (!state.props) return null;
-
-  const extractLine = v => (v && typeof v === "object") ? v.line : v;
 
   // Exact match first
   if (state.props[playerName] && state.props[playerName][stat] != null) {
-    return extractLine(state.props[playerName][stat]);
+    return state.props[playerName][stat];
   }
 
   // Partial match (different name formats)
@@ -236,11 +234,28 @@ function getPlayerLine(playerName) {
       propName.toLowerCase().includes(playerName.toLowerCase().split(" ").pop()) ||
       playerName.toLowerCase().includes(propName.toLowerCase().split(" ").pop())
     ) {
-      if (data[stat] != null) return extractLine(data[stat]);
+      if (data[stat] != null) return data[stat];
     }
   }
 
   return null;
+}
+
+function getPlayerLine(playerName, stat) {
+  stat = stat || state.activeStat;
+  const entry = _findPropEntry(playerName, stat);
+  if (!entry) return null;
+  return (entry && typeof entry === "object") ? entry.line : entry;
+}
+
+function getPlayerPropData(playerName, stat) {
+  stat = stat || state.activeStat;
+  return _findPropEntry(playerName, stat);
+}
+
+function formatOdds(price) {
+  if (price == null) return "";
+  return price > 0 ? `+${price}` : `${price}`;
 }
 
 function renderPlayers() {
@@ -331,7 +346,8 @@ function renderPlayers() {
 function openModal(player) {
   state.modalPlayer = player;
   state.modalStat = state.activeStat;
-  state.modalLine = getPlayerLine(player.name);
+  state.modalLine = getPlayerLine(player.name, state.modalStat);
+  state.modalPropOdds = getPlayerPropData(player.name, state.modalStat);
 
   document.getElementById("modal-player-name").textContent = player.name;
   document.getElementById("modal-team").textContent = `${player.team} vs ${player.opponent}`;
@@ -353,6 +369,9 @@ function openModal(player) {
   lineInput.value = state.modalLine != null ? state.modalLine : "";
   lineInput.placeholder = "Set line…";
 
+  // Show odds next to line input
+  updateOddsDisplay();
+
   // Set active tab
   document.querySelectorAll(".modal-stat-tab").forEach(t => {
     t.classList.toggle("active", t.dataset.stat === state.modalStat);
@@ -364,6 +383,23 @@ function openModal(player) {
   document.body.style.overflow = "hidden";
 
   loadPlayerHistory();
+}
+
+function updateOddsDisplay() {
+  const el = document.getElementById("odds-display");
+  if (!el) return;
+  const prop = state.modalPropOdds;
+  const books = prop?.books;
+  if (books && books.length) {
+    const first = books[0];
+    const overStr = first.over != null ? `O ${formatOdds(first.over)}` : "";
+    const underStr = first.under != null ? `U ${formatOdds(first.under)}` : "";
+    el.innerHTML = `<span class="odds-book-name">${first.title}</span><span class="odds-over">${overStr}</span><span class="odds-under">${underStr}</span>`;
+    el.style.display = "flex";
+  } else {
+    el.style.display = "none";
+    el.innerHTML = "";
+  }
 }
 
 function closeModal() {
@@ -422,7 +458,24 @@ function renderSummary(data) {
     </div>`;
   }
 
+  // Betting line cards from Odds API — one per sportsbook
+  let oddsHtml = "";
+  const prop = state.modalPropOdds;
+  if (prop?.books?.length) {
+    oddsHtml = prop.books.map(bk => {
+      const overStr = bk.over != null ? `O ${formatOdds(bk.over)}` : "";
+      const underStr = bk.under != null ? `U ${formatOdds(bk.under)}` : "";
+      const oddsStr = [overStr, underStr].filter(Boolean).join(" / ");
+      return `<div class="summary-card summary-card-odds">
+        <div class="summary-val">${bk.line}</div>
+        <div class="summary-lbl">${bk.title}</div>
+        ${oddsStr ? `<div class="summary-odds">${oddsStr}</div>` : ""}
+      </div>`;
+    }).join("");
+  }
+
   document.getElementById("stats-summary").innerHTML = `
+    ${oddsHtml}
     <div class="summary-card">
       <div class="summary-val">${data.avg}</div>
       <div class="summary-lbl">L${data.games.length} Avg ${label}</div>
@@ -435,10 +488,60 @@ function renderSummary(data) {
 }
 
 // ── Chart ─────────────────────────────────────────────────────────────────
+const BOOK_COLORS = [
+  "#6366f1", // indigo (primary)
+  "#f59e0b", // amber
+  "#06b6d4", // cyan
+  "#ec4899", // pink
+  "#10b981", // emerald
+];
+
 const propLinePlugin = {
   id: "propLine",
   afterDraw(chart) {
-    const line = chart.options.plugins.propLine?.value;
+    const opts = chart.options.plugins.propLine;
+    const books = opts?.books;
+
+    // If we have books from the Odds API, draw one line per book
+    if (books?.length) {
+      const { ctx, scales: { y, x } } = chart;
+      ctx.save();
+
+      books.forEach((bk, i) => {
+        if (bk.line == null) return;
+        const color = BOOK_COLORS[i % BOOK_COLORS.length];
+        const yPx = y.getPixelForValue(bk.line);
+
+        // Dashed line
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(x.left, yPx);
+        ctx.lineTo(x.right, yPx);
+        ctx.stroke();
+
+        // Label: "DraftKings 25.5 (O -110 / U -110)"
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = color;
+        ctx.font = "bold 11px -apple-system, sans-serif";
+        ctx.textAlign = "right";
+
+        const parts = [];
+        if (bk.over != null) parts.push(`O ${bk.over > 0 ? "+" : ""}${bk.over}`);
+        if (bk.under != null) parts.push(`U ${bk.under > 0 ? "+" : ""}${bk.under}`);
+        const oddsStr = parts.length ? `  (${parts.join(" / ")})` : "";
+        ctx.fillText(`${bk.title} ${bk.line}${oddsStr}`, x.right - 4, yPx - 5);
+      });
+
+      ctx.restore();
+      return;
+    }
+
+    // Fallback: single manual line (no books data)
+    const line = opts?.value;
     if (line == null) return;
 
     const { ctx, scales: { y, x } } = chart;
@@ -454,13 +557,12 @@ const propLinePlugin = {
     ctx.lineTo(x.right, yPx);
     ctx.stroke();
 
-    // Label
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
     ctx.fillStyle = "#6366f1";
     ctx.font = "bold 11px -apple-system, sans-serif";
     ctx.textAlign = "right";
-    ctx.fillText(line, x.right - 4, yPx - 5);
+    ctx.fillText(`${line}`, x.right - 4, yPx - 5);
     ctx.restore();
   },
 };
@@ -535,7 +637,10 @@ function renderPlayerChart(data) {
             },
           },
         },
-        propLine: { value: line },
+        propLine: {
+          value: line,
+          books: state.modalPropOdds?.books ?? null,
+        },
       },
       scales: {
         x: {
@@ -720,9 +825,11 @@ function setupEvents() {
       state.modalStat = tab.dataset.stat;
       // Update line from props if available
       if (state.modalPlayer) {
-        const propLine = getPlayerLine(state.modalPlayer.name);
+        const propLine = getPlayerLine(state.modalPlayer.name, state.modalStat);
         state.modalLine = propLine;
+        state.modalPropOdds = getPlayerPropData(state.modalPlayer.name, state.modalStat);
         document.getElementById("line-input").value = propLine != null ? propLine : "";
+        updateOddsDisplay();
       }
       loadPlayerHistory();
     });

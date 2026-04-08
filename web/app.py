@@ -120,6 +120,11 @@ def _get_player_logs() -> Optional[pd.DataFrame]:
             print("Loading player game logs...")
             _player_logs = pd.read_csv(csv_path, low_memory=False)
             _player_logs["GAME_DATE"] = pd.to_datetime(_player_logs["GAME_DATE"])
+            before = len(_player_logs)
+            _player_logs = _player_logs.drop_duplicates(subset=["PLAYER_ID", "GAME_ID"], keep="last")
+            dupes = before - len(_player_logs)
+            if dupes:
+                print(f"  Dropped {dupes:,} duplicate rows")
             print(f"  Loaded {len(_player_logs):,} rows")
     return _player_logs
 
@@ -761,16 +766,20 @@ def api_props():
                         stat = mk.replace("player_", "").lower()
                         if stat in ("points", "rebounds", "assists", "threes"):
                             short = {"points": "pts", "rebounds": "reb", "assists": "ast", "threes": "tpm"}[stat]
-                            over_price = under_price = None
+                            books = []
                             for bk in ["draftkings", "fanduel", "betmgm", "caesars", "pointsbetus"]:
                                 if bk in data.get("books", {}):
-                                    over_price  = data["books"][bk].get("over")
-                                    under_price = data["books"][bk].get("under")
-                                    break
+                                    bd = data["books"][bk]
+                                    books.append({
+                                        "key": bk,
+                                        "title": bd.get("title", bk.title()),
+                                        "line": bd.get("line", data.get("line")),
+                                        "over": bd.get("over"),
+                                        "under": bd.get("under"),
+                                    })
                             all_props[player_name][short] = {
-                                "line":  data.get("line"),
-                                "over":  over_price,
-                                "under": under_price,
+                                "line": books[0]["line"] if books else data.get("line"),
+                                "books": books,
                             }
         _props_cache = all_props
         _props_cache_date = today
@@ -781,9 +790,10 @@ def api_props():
 
 @app.route("/api/refresh")
 def api_refresh():
-    global _today_games, _today_games_date, _injuries_cache, _injuries_cache_date
+    global _today_games, _today_games_date, _injuries_cache, _injuries_cache_date, _props_cache, _props_cache_date
     _today_games = _today_games_date = None
     _injuries_cache = _injuries_cache_date = None
+    _props_cache = _props_cache_date = None
     return jsonify({"ok": True})
 
 

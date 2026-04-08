@@ -89,5 +89,26 @@
     "games": 11,
     "accuracy_before": 0.7273,
     "accuracy_after": 0.7273
+  },
+  {
+    "date": "20260405",
+    "learned_at": "2026-04-06T10:23:52.533985",
+    "games": 11,
+    "accuracy_before": 0.7273,
+    "accuracy_after": 0.7273
+  },
+  {
+    "date": "20260406",
+    "learned_at": "2026-04-07T11:59:01.332464",
+    "games": 5,
+    "accuracy_before": 0.6,
+    "accuracy_after": 0.6
+  },
+  {
+    "date": "20260407",
+    "learned_at": "2026-04-08T18:03:29.447733",
+    "games": 10,
+    "accuracy_before": 0.9,
+    "accuracy_after": 0.9
   }
 ]

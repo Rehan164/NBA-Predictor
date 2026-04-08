@@ -251,6 +251,7 @@ def precompute_player_game_metrics(player_csv_path) -> dict:
     print("Loading player game logs...")
     pdf = pd.read_csv(player_csv_path)
     pdf["GAME_DATE"] = pd.to_datetime(pdf["GAME_DATE"])
+    pdf = pdf.drop_duplicates(subset=["PLAYER_ID", "GAME_ID"], keep="last")
 
     # Ensure PTS is numeric
     pdf["PTS"] = pd.to_numeric(pdf["PTS"], errors="coerce").fillna(0)

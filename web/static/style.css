@@ -720,9 +720,47 @@ main {
   font-weight: 400;
 }
 
+.odds-display {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.odds-book-name {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.odds-over {
+  color: var(--green);
+}
+
+.odds-under {
+  color: var(--red, #ef4444);
+}
+
+.summary-card-odds {
+  border-color: rgba(99, 102, 241, 0.3);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.summary-card-odds .summary-val {
+  color: #6366f1;
+}
+
+.summary-odds {
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+
 /* ── Stats Summary Bar ───────────────────────────────────────────────────── */
 .stats-summary {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 20px;
 }

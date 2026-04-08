@@ -1,6 +1,6 @@
 {
   "trained": true,
-  "trained_at": "2026-04-04T11:50:13.382413",
+  "trained_at": "2026-04-07T17:24:30.229014",
   "metrics": {
     "pts": {
       "mae": 4.55,

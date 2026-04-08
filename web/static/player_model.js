@@ -9,6 +9,7 @@ const pmLog      = document.getElementById("pm-log");
 const pmPreds    = document.getElementById("pm-predictions");
 
 let pollTimer = null;
+let propsData = null; // odds from /api/props
 
 /* ── Status ─────────────────────────────────────────────────────────── */
 
@@ -145,8 +146,13 @@ btnPredict.addEventListener("click", async () => {
   btnPredict.innerHTML = '<span class="pm-spinner"></span> Loading...';
 
   try {
-    const r = await fetch("/api/player-model/predict");
+    const [r, propsR] = await Promise.all([
+      fetch("/api/player-model/predict"),
+      fetch("/api/props").catch(() => null),
+    ]);
     const games = await r.json();
+    try { propsData = propsR ? await propsR.json() : null; } catch { propsData = null; }
+    if (propsData?.error) propsData = null;
     renderPredictions(games);
   } catch (e) {
     pmPreds.innerHTML = `<div class="pm-empty"><p>Failed: ${e.message}</p></div>`;
@@ -159,6 +165,47 @@ btnPredict.addEventListener("click", async () => {
       Predict Today's Props`;
   }
 });
+
+/* ── Prop Matching ──────────────────────────────────────────────────── */
+
+function findPlayerProps(playerName) {
+  if (!propsData) return null;
+  // Exact match
+  if (propsData[playerName]) return propsData[playerName];
+  // Partial match by last name
+  const last = playerName.toLowerCase().split(" ").pop();
+  for (const [propName, data] of Object.entries(propsData)) {
+    if (propName.toLowerCase().split(" ").pop() === last) return data;
+  }
+  return null;
+}
+
+function getBooks(playerName, stat) {
+  const props = findPlayerProps(playerName);
+  if (!props || !props[stat]?.books?.length) return null;
+  return props[stat].books;
+}
+
+/**
+ * Returns confidence info for a prediction vs the betting lines.
+ * "confident" = prediction beats ALL book lines by >= margin AND player avg also beats them.
+ */
+function getPropConfidence(pred, avg, books, margin) {
+  if (!books?.length || pred == null || avg == null) return null;
+  // Check: does prediction beat every book's line?
+  const allBeat = books.every(bk => bk.line != null && pred >= bk.line + margin);
+  // Check: does the player's recent average also clear the lines?
+  const avgBeats = books.every(bk => bk.line != null && avg >= bk.line);
+  if (allBeat && avgBeats) return "strong";
+  return null;
+}
+
+function fmtOdds(price) {
+  if (price == null) return "";
+  return price > 0 ? `+${price}` : `${price}`;
+}
+
+/* ── Render Predictions ────────────────────────────────────────────── */
 
 function renderPredictions(games) {
   if (!games || games.length === 0 || games[0]?.error) {
@@ -230,6 +277,29 @@ function renderPredictions(games) {
 
         const injBadge = p.is_out ? '<span class="pm-injury-badge out">OUT</span>' : '';
 
+        // Build prediction cells with prop confidence highlighting
+        const predCells = [
+          { stat: "pts", pred: p.pred_pts, avg: p.avg_pts, margin: 1.5 },
+          { stat: "reb", pred: p.pred_reb, avg: p.avg_reb, margin: 1.0 },
+          { stat: "ast", pred: p.pred_ast, avg: p.avg_ast, margin: 1.0 },
+        ].map(({ stat, pred, avg, margin }) => {
+          if (p.is_out) {
+            return `<td>--</td><td><span class="pm-avg-val">--</span></td>`;
+          }
+          const books = getBooks(p.name, stat);
+          const conf = getPropConfidence(pred, avg, books, margin);
+          const cls = conf === "strong" ? "pm-pred-hit" : "";
+          const tooltipHtml = books?.length ? books.map(bk => {
+            const overStr = bk.over != null ? `<span class="tt-over">O ${fmtOdds(bk.over)}</span>` : "";
+            const underStr = bk.under != null ? `<span class="tt-under">U ${fmtOdds(bk.under)}</span>` : "";
+            return `<div class="tt-row"><span class="tt-book">${bk.title}</span><span class="tt-line">${bk.line}</span>${overStr}${underStr}</div>`;
+          }).join("") : "";
+          const tooltipWrap = tooltipHtml ? `<div class="pm-tooltip">${tooltipHtml}</div>` : "";
+          const predCell = `<td class="${cls} ${books?.length ? 'has-tooltip' : ''}">${tooltipWrap}<span class="pm-pred-val">${pred}</span>${books?.length ? `<span class="pm-line-badge">${books[0].line}</span>` : ""}</td>`;
+          const avgCell = `<td><span class="pm-avg-val">${avg || '--'}</span> ${diffBadge(pred, avg, false)}</td>`;
+          return predCell + avgCell;
+        }).join("");
+
         row.innerHTML = `
           <td>
             <div class="pm-player-cell">
@@ -240,12 +310,7 @@ function renderPredictions(games) {
             </div>
           </td>
           <td>${p.is_out ? '--' : p.avg_min || '--'}</td>
-          <td><span class="pm-pred-val">${p.is_out ? '--' : p.pred_pts}</span></td>
-          <td><span class="pm-avg-val">${p.avg_pts || '--'}</span> ${diffBadge(p.pred_pts, p.avg_pts, p.is_out)}</td>
-          <td><span class="pm-pred-val">${p.is_out ? '--' : p.pred_reb}</span></td>
-          <td><span class="pm-avg-val">${p.avg_reb || '--'}</span> ${diffBadge(p.pred_reb, p.avg_reb, p.is_out)}</td>
-          <td><span class="pm-pred-val">${p.is_out ? '--' : p.pred_ast}</span></td>
-          <td><span class="pm-avg-val">${p.avg_ast || '--'}</span> ${diffBadge(p.pred_ast, p.avg_ast, p.is_out)}</td>`;
+          ${predCells}`;
 
         tbody.appendChild(row);
       }

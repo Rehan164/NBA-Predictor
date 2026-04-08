@@ -165,6 +165,7 @@ def get_player_props(event_id: str, markets: Optional[List[str]] = None) -> Dict
                 if book_key not in props_by_player[player_name][market_key]["books"]:
                     props_by_player[player_name][market_key]["books"][book_key] = {
                         "title": book_title,
+                        "line": line,
                     }
 
                 props_by_player[player_name][market_key]["books"][book_key][side] = price

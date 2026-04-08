@@ -89,6 +89,7 @@ def update_current_season():
         existing = existing[existing["SEASON_ID"] != current_season_id]
 
     combined = pd.concat([existing, df], ignore_index=True)
+    combined = combined.drop_duplicates(subset=["PLAYER_ID", "GAME_ID"], keep="last")
     combined = combined.sort_values(["GAME_DATE", "GAME_ID", "TEAM_ABBREVIATION"]).reset_index(drop=True)
 
     added = len(combined) - before
@@ -135,6 +136,7 @@ def main():
 
     combined = pd.concat(all_logs, ignore_index=True)
     combined["GAME_DATE"] = pd.to_datetime(combined["GAME_DATE"])
+    combined = combined.drop_duplicates(subset=["PLAYER_ID", "GAME_ID"], keep="last")
     combined = combined.sort_values(["GAME_DATE", "GAME_ID", "TEAM_ABBREVIATION"]).reset_index(drop=True)
 
     print(f"\n{'=' * 60}")
