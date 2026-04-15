@@ -1,14 +1,15 @@
 {
   "trained": true,
-  "trained_at": "2026-04-07T18:01:00.153387",
+  "trained_at": "2026-04-14T12:19:00.816446",
   "metrics": {
-    "win_accuracy": 0.7094,
-    "margin_mae": 9.7,
-    "total_mae": 14.1,
-    "avg_single_accuracy": 0.7059,
+    "win_accuracy": 0.9179,
+    "margin_mae": 7.01,
+    "total_mae": 14.42,
+    "margin_direction": 0.857,
+    "avg_single_accuracy": 0.9032,
     "ensemble_size": 5,
-    "train_samples": 56862,
-    "test_games": 5018,
-    "total_games_processed": 33449
+    "train_samples": 58954,
+    "test_games": 5202,
+    "total_games_processed": 34679
   }
 }

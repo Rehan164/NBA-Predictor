@@ -28,6 +28,7 @@ from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
 
 app = Flask(__name__)
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 ET = timezone(timedelta(hours=-5))
 
 # ── ESPN abbr → NBA API/CSV abbr (they differ for several teams) ──────────
@@ -1055,6 +1056,7 @@ def api_model_train():
 @app.route("/api/model/train/status")
 def api_model_train_status():
     return jsonify(_model_job)
+
 
 
 @app.route("/api/model/learn", methods=["POST"])

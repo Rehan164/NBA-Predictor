@@ -247,7 +247,7 @@ btnLearn.addEventListener("click", async () => {
     }
 
     appendLog(`Learned from ${data.games} games`, "good");
-    appendLog(`Accuracy: ${data.accuracy_before}% → ${data.accuracy_after}%`, "good");
+    appendLog(`ML: ${data.ml_acc_before}% → ${data.ml_acc_after}% | Spread: ${data.spread_acc_before}% → ${data.spread_acc_after}%`, "good");
 
     renderLearnResults(data);
     loadStatus(); // refresh metrics
@@ -266,35 +266,108 @@ btnLearn.addEventListener("click", async () => {
 function renderLearnResults(data) {
   learnResults.classList.add("visible");
 
-  let html = `
-    <h3 style="margin-bottom:12px;font-size:15px">Learn Results — ${data.date}</h3>
-    <div class="learn-summary">
-      <div class="learn-summary-stat">
-        <div class="learn-summary-val">${data.games}</div>
-        <div class="learn-summary-label">Games</div>
-      </div>
-      <div class="learn-summary-stat">
-        <div class="learn-summary-val">${data.accuracy_before}%</div>
-        <div class="learn-summary-label">Before</div>
-      </div>
-      <div class="learn-summary-stat">
-        <div class="learn-summary-val" style="color:var(--green)">${data.accuracy_after}%</div>
-        <div class="learn-summary-label">After</div>
-      </div>
+  const bs = data.book_stats || {};
+  const hasBooks = bs.games_with_odds > 0;
+
+  let html = `<h3 style="margin-bottom:12px;font-size:15px">Learn Results — ${data.date}</h3>`;
+
+  // Summary stats
+  html += `<div class="learn-summary">
+    <div class="learn-summary-stat">
+      <div class="learn-summary-val">${data.games}</div>
+      <div class="learn-summary-label">Games</div>
+    </div>
+    <div class="learn-summary-stat">
+      <div class="learn-summary-val">${data.ml_acc_before}%</div>
+      <div class="learn-summary-label">ML Before</div>
+    </div>
+    <div class="learn-summary-stat">
+      <div class="learn-summary-val" style="color:var(--green)">${data.ml_acc_after}%</div>
+      <div class="learn-summary-label">ML After</div>
+    </div>
+    <div class="learn-summary-stat">
+      <div class="learn-summary-val">${data.spread_acc_before}%</div>
+      <div class="learn-summary-label">Spread Before</div>
+    </div>
+    <div class="learn-summary-stat">
+      <div class="learn-summary-val" style="color:var(--green)">${data.spread_acc_after}%</div>
+      <div class="learn-summary-label">Spread After</div>
     </div>`;
 
+  if (hasBooks) {
+    const spreadPct = Math.round(bs.spread_vs_book / bs.games_with_odds * 100);
+    const mlPct = Math.round(bs.ml_vs_book / bs.games_with_odds * 100);
+    const ouPct = Math.round(bs.ou_vs_book / bs.games_with_odds * 100);
+    html += `
+    <div class="learn-summary-stat" style="border-left:2px solid var(--yellow);padding-left:14px">
+      <div class="learn-summary-val">${spreadPct}%</div>
+      <div class="learn-summary-label">vs Book Spread</div>
+    </div>
+    <div class="learn-summary-stat">
+      <div class="learn-summary-val">${mlPct}%</div>
+      <div class="learn-summary-label">vs Book ML</div>
+    </div>
+    <div class="learn-summary-stat">
+      <div class="learn-summary-val">${ouPct}%</div>
+      <div class="learn-summary-label">vs Book O/U</div>
+    </div>`;
+  }
+  html += `</div>`;
+
   if (data.results) {
+    html += `<table class="learn-table">
+      <thead><tr>
+        <th style="text-align:left">Game</th>
+        <th>Model</th>
+        <th>Book Line</th>
+        <th>Actual</th>
+        <th>ML</th>
+        <th>Spread</th>
+        <th>O/U</th>
+        <th>vs Book</th>
+      </tr></thead><tbody>`;
+
     for (const r of data.results) {
-      const cls = r.correct ? "learn-correct" : "learn-wrong";
-      const icon = r.correct ? "✓" : "✗";
-      html += `
-        <div class="learn-game-row">
-          <span>${r.game}</span>
-          <span>Pred: ${r.pred_margin > 0 ? "+" : ""}${r.pred_margin} / ${r.pred_total}</span>
-          <span>Actual: ${r.actual_margin > 0 ? "+" : ""}${r.actual_margin} / ${r.actual_total}</span>
-          <span class="${cls}">${icon} Err: ${r.margin_error}pts</span>
-        </div>`;
+      const mlCls = r.ml_correct ? "learn-correct" : "learn-wrong";
+      const mlIcon = r.ml_correct ? "✓" : "✗";
+      const spreadCls = r.spread_correct ? "learn-correct" : "learn-wrong";
+      const spreadIcon = r.spread_correct ? "✓" : "✗";
+      const ouCls = r.total_error <= 10 ? "learn-correct" : "learn-wrong";
+
+      // Book line display
+      let bookLine = "—";
+      if (r.book_spread != null || r.book_total != null) {
+        const sp = r.book_spread != null ? (r.book_spread > 0 ? "+" : "") + r.book_spread : "—";
+        const tt = r.book_total != null ? r.book_total : "—";
+        bookLine = `${sp} / ${tt}`;
+      }
+
+      // vs Book badges
+      let vsBook = "";
+      if (r.beat_book_spread != null) {
+        vsBook += `<span class="${r.beat_book_spread ? "learn-correct" : "learn-wrong"}" title="Spread vs book">S${r.beat_book_spread ? "✓" : "✗"}</span> `;
+      }
+      if (r.beat_book_ml != null) {
+        vsBook += `<span class="${r.beat_book_ml ? "learn-correct" : "learn-wrong"}" title="ML vs book">M${r.beat_book_ml ? "✓" : "✗"}</span> `;
+      }
+      if (r.beat_book_ou != null) {
+        vsBook += `<span class="${r.beat_book_ou ? "learn-correct" : "learn-wrong"}" title="O/U vs book">O${r.beat_book_ou ? "✓" : "✗"}</span>`;
+      }
+      if (!vsBook) vsBook = '<span class="learn-na">no odds</span>';
+
+      html += `<tr>
+        <td>${r.game}</td>
+        <td>${r.pred_margin > 0 ? "+" : ""}${r.pred_margin} / ${r.pred_total}</td>
+        <td>${bookLine}</td>
+        <td>${r.actual_margin > 0 ? "+" : ""}${r.actual_margin} / ${r.actual_total}</td>
+        <td class="${mlCls}">${mlIcon}</td>
+        <td class="${spreadCls}">${spreadIcon}</td>
+        <td class="${ouCls}">${r.ou_result}</td>
+        <td>${vsBook}</td>
+      </tr>`;
     }
+
+    html += `</tbody></table>`;
   }
 
   learnResults.innerHTML = html;
@@ -416,6 +489,7 @@ function buildPredCard(p) {
   card.innerHTML = html;
   return card;
 }
+
 
 /* ── Init ─────────────────────────────────────────────────────────── */
 loadStatus();

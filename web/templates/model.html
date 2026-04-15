@@ -241,10 +241,11 @@
       border-radius: var(--radius);
       padding: 16px 20px;
       display: none;
+      overflow-x: auto;
     }
     .learn-results.visible { display: block; }
     .learn-summary {
-      display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap;
+      display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
     }
     .learn-summary-stat {
       padding: 8px 14px;
@@ -254,14 +255,29 @@
     }
     .learn-summary-val { font-size: 18px; font-weight: 700; }
     .learn-summary-label { font-size: 11px; color: var(--text-muted); }
-    .learn-game-row {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 8px 0; border-bottom: 1px solid var(--border);
-      font-size: 13px;
+    .learn-section-title {
+      font-size: 12px; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.5px;
+      margin: 12px 0 6px; padding-top: 8px;
+      border-top: 1px solid var(--border);
     }
-    .learn-game-row:last-child { border-bottom: none; }
+    .learn-section-title:first-of-type { border-top: none; margin-top: 0; }
+    .learn-table {
+      width: 100%; border-collapse: collapse; font-size: 12px; min-width: 700px;
+    }
+    .learn-table th {
+      text-align: center; font-size: 11px; color: var(--text-muted);
+      font-weight: 600; padding: 6px 8px; border-bottom: 2px solid var(--border);
+    }
+    .learn-table th:first-child { text-align: left; }
+    .learn-table td {
+      padding: 7px 8px; border-bottom: 1px solid var(--border); text-align: center;
+    }
+    .learn-table td:first-child { text-align: left; }
+    .learn-table tr:last-child td { border-bottom: none; }
     .learn-correct { color: var(--green); font-weight: 600; }
     .learn-wrong { color: var(--red); font-weight: 600; }
+    .learn-na { color: var(--text-muted); font-size: 11px; }
 
     @media (max-width: 700px) {
       .model-grid { grid-template-columns: 1fr; padding: 16px; }
@@ -398,6 +414,6 @@
 
   </div>
 
-  <script src="/static/model.js"></script>
+  <script src="/static/model.js?v=4"></script>
 </body>
 </html>

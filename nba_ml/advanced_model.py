@@ -53,6 +53,8 @@ TEAM_STATS_PATH = ADVANCED_MODEL_DIR / "team_stats.pkl"
 ELO_PATH = ADVANCED_MODEL_DIR / "elo.pkl"
 REST_PATH = ADVANCED_MODEL_DIR / "rest.pkl"
 LEARN_HISTORY_PATH = ADVANCED_MODEL_DIR / "learn_history.json"
+CACHED_ODDS_PATH = ADVANCED_MODEL_DIR / "cached_odds.json"
+ODDS_HISTORY_CSV = ADVANCED_MODEL_DIR / "odds_history.csv"
 
 # Player features
 RAW_STATS = 10
@@ -532,13 +534,18 @@ def _train_single_model(dataset, split, device, seed, model_idx, emit, progress_
             optimizer.step(); sched.step()
 
             e_loss += loss.item()
-            with torch.no_grad():
-                e_correct += ((torch.sigmoid(wl)>0.5).float() == b["w"]).sum().item()
             batches += 1
 
-        # Test
-        model.eval(); tc = 0
+        # Eval mode for both train and test accuracy (apples-to-apples comparison)
+        model.eval()
+        orig_tr_idx = torch.arange(split // 2)  # original (non-augmented) training games
+        tr_correct = 0; tc = 0
         with torch.no_grad():
+            for i in range(0, len(orig_tr_idx), BATCH_SIZE*2):
+                bi = orig_tr_idx[i:i+BATCH_SIZE*2]
+                wl,_,_ = model(hr[bi].to(device),hm[bi].to(device),ar[bi].to(device),am[bi].to(device),
+                               htf[bi].to(device),atf[bi].to(device),ctx[bi].to(device))
+                tr_correct += ((torch.sigmoid(wl)>0.5).float() == tgt_w[bi].to(device)).sum().item()
             for i in range(0, len(te_idx), BATCH_SIZE*2):
                 bi = te_idx[i:i+BATCH_SIZE*2]
                 wl,_,_ = model(hr[bi].to(device),hm[bi].to(device),ar[bi].to(device),am[bi].to(device),
@@ -546,7 +553,7 @@ def _train_single_model(dataset, split, device, seed, model_idx, emit, progress_
                 tc += ((torch.sigmoid(wl)>0.5).float() == tgt_w[bi].to(device)).sum().item()
 
         t_acc = tc / (n - split)
-        tr_acc = e_correct / split
+        tr_acc = tr_correct / (split // 2)
 
         emit(f"    [{model_idx+1}/{N_ENSEMBLE}] Ep {epoch+1:2d}/{MAX_EPOCHS} | Loss: {e_loss/max(batches,1):.4f} "
              f"| Train: {tr_acc:.1%} | Test: {t_acc:.1%}")
@@ -645,11 +652,13 @@ def _train_network(dataset_raw, device, emit, progress_state):
     test_total_raw = dataset["total"][split:]
     margin_mae_norm = np.mean(np.abs(avg_margin - test_margin_raw))
     total_mae_norm = np.mean(np.abs(avg_total - test_total_raw))
+    # Margin direction: did predicted margin sign match actual?
+    margin_dir = np.mean((avg_margin > 0) == (test_margin_raw > 0))
 
     emit(f"\n  Individual model accuracies: {[f'{a:.1%}' for a in all_accs]}")
     emit(f"  ENSEMBLE accuracy: {ensemble_acc:.1%}")
 
-    return all_states, ensemble_acc, margin_mae_norm, total_mae_norm, split, n_test, np.mean(all_accs)
+    return all_states, ensemble_acc, margin_mae_norm, total_mae_norm, margin_dir, split, n_test, np.mean(all_accs)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -683,7 +692,7 @@ def train_model(progress_callback=None, progress_state=None):
 
     emit(f"\n═══ Phase 2: {N_ENSEMBLE}-Model Ensemble Training ═══")
 
-    all_states, ens_acc, margin_mae_n, total_mae_n, n_train, n_test, avg_single = \
+    all_states, ens_acc, margin_mae_n, total_mae_n, margin_dir, n_train, n_test, avg_single = \
         _train_network(dataset, device, emit, progress_state)
 
     margin_mae = margin_mae_n * norm_params["margin_std"]
@@ -693,6 +702,7 @@ def train_model(progress_callback=None, progress_state=None):
         "win_accuracy": round(float(ens_acc), 4),
         "margin_mae": round(float(margin_mae), 2),
         "total_mae": round(float(total_mae), 2),
+        "margin_direction": round(float(margin_dir), 4),
         "avg_single_accuracy": round(float(avg_single), 4),
         "ensemble_size": N_ENSEMBLE,
         "train_samples": n_train,
@@ -822,8 +832,53 @@ def learn_from_results(target_date=None, progress_callback=None):
     if not games_data: return {"error": "No completed games found"}
     emit(f"Found {len(games_data)} completed games")
 
+    # Load cached odds from when predictions were made
+    cached_odds = {}
+    if CACHED_ODDS_PATH.exists():
+        try:
+            with open(CACHED_ODDS_PATH) as f: all_cached = json.load(f)
+            cached_odds = all_cached.get(target_date, {})
+            if not cached_odds:
+                for k, v in all_cached.items():
+                    if k.replace("-","") == target_date:
+                        cached_odds = v; break
+        except: pass
+    if cached_odds:
+        emit(f"Loaded cached odds for {len(cached_odds)} games")
+    else:
+        # Fallback: fetch odds from ESPN game summaries (pickcenter)
+        emit("No cached odds — fetching from ESPN pickcenter...")
+        for event in espn_data.get("events", []):
+            comp = event["competitions"][0]
+            ht_espn = at_espn = None
+            for c in comp["competitors"]:
+                abbr = _csv_abbr(c["team"]["abbreviation"])
+                if c["homeAway"]=="home": ht_espn = abbr
+                else: at_espn = abbr
+            if not ht_espn or not at_espn: continue
+            try:
+                eid = event["id"]
+                sr = requests.get(f"https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event={eid}", timeout=10)
+                sr.raise_for_status()
+                pc = sr.json().get("pickcenter", [])
+                if pc:
+                    line = pc[0]  # first book (usually DraftKings)
+                    odds_key = f"{at_espn}@{ht_espn}"
+                    cached_odds[odds_key] = {
+                        "spread": line.get("spread"),
+                        "total": line.get("overUnder"),
+                        "home_ml": line.get("homeTeamOdds", {}).get("moneyLine"),
+                        "away_ml": line.get("awayTeamOdds", {}).get("moneyLine"),
+                    }
+            except: pass
+        if cached_odds:
+            emit(f"Fetched ESPN odds for {len(cached_odds)} games")
+
     # Ensemble pre-learn predictions
-    results = []; correct_before = 0
+    results = []
+    ml_correct_before = 0; spread_correct_before = 0; ou_correct_before = 0
+    spread_vs_book = 0; ml_vs_book = 0; ou_vs_book = 0; games_with_odds = 0
+
     for i, g in enumerate(games_data):
         avg_wp = 0.0; avg_mg = 0.0; avg_tt = 0.0
         with torch.no_grad():
@@ -839,16 +894,84 @@ def learn_from_results(target_date=None, progress_callback=None):
                 avg_wp += torch.sigmoid(wl).item() / len(models)
                 avg_mg += (mp.item()*norm_params["margin_std"]+norm_params["margin_mean"]) / len(models)
                 avg_tt += (tp.item()*norm_params["total_std"]+norm_params["total_mean"]) / len(models)
-        correct = (avg_wp>0.5)==(g["win"]>0.5)
-        if correct: correct_before += 1
-        results.append({"game":game_labels[i],"pred_win_prob":round(avg_wp*100,1),
-            "pred_margin":round(avg_mg,1),"pred_total":round(avg_tt,1),
-            "actual_margin":round(g["margin"],1),"actual_total":round(g["total"],1),
-            "correct":bool(correct),"margin_error":round(abs(avg_mg-g["margin"]),1),
-            "total_error":round(abs(avg_tt-g["total"]),1)})
 
-    acc_before = correct_before / len(results)
-    emit(f"Pre-learn accuracy: {acc_before:.0%} ({correct_before}/{len(results)})")
+        ht, at = g["home_team"], g["away_team"]
+        actual_margin = g["margin"]  # home perspective
+        actual_total = g["total"]
+        home_won = g["win"] > 0.5
+
+        # Model checks
+        ml_hit = (avg_wp > 0.5) == home_won
+        spread_hit = (avg_mg > 0) == (actual_margin > 0)
+        ou_hit = (avg_tt > actual_total) != (actual_total > avg_tt)  # will simplify
+        # O/U: model predicted total X, actual was Y. "Over" if actual > pred, "Under" otherwise
+        ou_result = "Over" if actual_total > avg_tt else "Under" if actual_total < avg_tt else "Push"
+
+        if ml_hit: ml_correct_before += 1
+        if spread_hit: spread_correct_before += 1
+
+        # Sportsbook comparison
+        odds_key = f"{at}@{ht}"
+        odds = cached_odds.get(odds_key, {})
+        book_spread = odds.get("spread")      # home team spread line (e.g. -5.5)
+        book_total = odds.get("total")         # O/U line (e.g. 224.5)
+        book_home_ml = odds.get("home_ml")     # moneyline odds
+        book_away_ml = odds.get("away_ml")
+
+        # Did model beat the book's spread? Model says home wins by avg_mg, book line is book_spread.
+        # If actual_margin > book_spread, home covered. Did model predict that?
+        book_spread_hit = None; book_ou_hit = None; book_ml_hit = None
+        if book_spread is not None:
+            games_with_odds += 1
+            home_covered = actual_margin > book_spread  # home beat the spread
+            model_says_cover = avg_mg > book_spread     # model predicted home covers
+            book_spread_hit = model_says_cover == home_covered
+            if book_spread_hit: spread_vs_book += 1
+
+        if book_total is not None:
+            actual_over = actual_total > book_total
+            model_says_over = avg_tt > book_total
+            book_ou_hit = model_says_over == actual_over
+            if book_ou_hit: ou_vs_book += 1
+
+        if book_home_ml is not None:
+            # Book favorite: team with negative ML odds
+            book_fav_home = book_home_ml < 0 if (book_home_ml and book_away_ml) else None
+            model_fav_home = avg_wp > 0.5
+            # Did our model's pick (fav) win?
+            model_pick_won = (model_fav_home and home_won) or (not model_fav_home and not home_won)
+            book_ml_hit = bool(model_pick_won)
+            if book_ml_hit: ml_vs_book += 1
+
+        margin_err = round(abs(avg_mg - actual_margin), 1)
+        total_err = round(abs(avg_tt - actual_total), 1)
+
+        results.append({
+            "game": game_labels[i], "home_team": ht, "away_team": at,
+            "pred_win_prob": round(avg_wp*100, 1),
+            "pred_margin": round(avg_mg, 1), "pred_total": round(avg_tt, 1),
+            "actual_margin": round(actual_margin, 1), "actual_total": round(actual_total, 1),
+            # Model accuracy
+            "ml_correct": bool(ml_hit), "spread_correct": bool(spread_hit),
+            "ou_result": ou_result,
+            "margin_error": margin_err, "total_error": total_err,
+            # Sportsbook lines
+            "book_spread": book_spread, "book_total": book_total,
+            "book_home_ml": book_home_ml, "book_away_ml": book_away_ml,
+            # Model vs book
+            "beat_book_spread": book_spread_hit,
+            "beat_book_ou": book_ou_hit,
+            "beat_book_ml": book_ml_hit,
+        })
+
+    n = len(results)
+    ml_acc_before = ml_correct_before / n
+    spread_acc_before = spread_correct_before / n
+    emit(f"Pre-learn — ML: {ml_acc_before:.0%} ({ml_correct_before}/{n}), "
+         f"Spread: {spread_acc_before:.0%} ({spread_correct_before}/{n})")
+    if games_with_odds:
+        emit(f"Model vs Books — Spread: {spread_vs_book}/{games_with_odds}, "
+             f"ML: {ml_vs_book}/{games_with_odds}, O/U: {ou_vs_book}/{games_with_odds}")
 
     # Fine-tune ALL ensemble models
     t_hr = torch.FloatTensor(np.array([g["hr"] for g in games_data])).to(device)
@@ -875,17 +998,21 @@ def learn_from_results(target_date=None, progress_callback=None):
         emit(f"  Fine-tuned model {mi+1}/{len(models)}")
 
     # Post-learn ensemble accuracy
-    correct_after = 0
+    ml_correct_after = 0; spread_correct_after = 0
     for i, g in enumerate(games_data):
-        avg_wp = 0.0
+        avg_wp = 0.0; avg_mg_post = 0.0
         with torch.no_grad():
             for m in models:
-                wl,_,_ = m(t_hr[i:i+1],t_hm[i:i+1],t_ar[i:i+1],t_am[i:i+1],t_htf[i:i+1],t_atf[i:i+1],t_ctx[i:i+1])
+                wl,mp,_ = m(t_hr[i:i+1],t_hm[i:i+1],t_ar[i:i+1],t_am[i:i+1],t_htf[i:i+1],t_atf[i:i+1],t_ctx[i:i+1])
                 avg_wp += torch.sigmoid(wl).item() / len(models)
-        if (avg_wp>0.5)==(g["win"]>0.5): correct_after += 1
+                avg_mg_post += (mp.item()*norm_params["margin_std"]+norm_params["margin_mean"]) / len(models)
+        if (avg_wp>0.5)==(g["win"]>0.5): ml_correct_after += 1
+        if (avg_mg_post>0)==(g["margin"]>0): spread_correct_after += 1
 
-    acc_after = correct_after / len(results)
-    emit(f"Post-learn accuracy: {acc_after:.0%} ({correct_after}/{len(results)})")
+    ml_acc_after = ml_correct_after / n
+    spread_acc_after = spread_correct_after / n
+    emit(f"Post-learn — ML: {ml_acc_after:.0%} ({ml_correct_after}/{n}), "
+         f"Spread: {spread_acc_after:.0%} ({spread_correct_after}/{n})")
 
     # Update trackers
     for g in games_data:
@@ -898,8 +1025,20 @@ def learn_from_results(target_date=None, progress_callback=None):
     player_tracker.save(PLAYER_STATS_PATH); team_tracker.save(TEAM_STATS_PATH); elo_tracker.save(ELO_PATH)
     emit("Updated all models and tracker states saved")
 
-    entry = {"date":target_date,"learned_at":datetime.now().isoformat(),"games":len(results),
-             "accuracy_before":round(acc_before,4),"accuracy_after":round(acc_after,4)}
+    # Book stats
+    book_stats = {}
+    if games_with_odds:
+        book_stats = {
+            "games_with_odds": games_with_odds,
+            "spread_vs_book": spread_vs_book,
+            "ml_vs_book": ml_vs_book,
+            "ou_vs_book": ou_vs_book,
+        }
+
+    entry = {"date":target_date,"learned_at":datetime.now().isoformat(),"games":n,
+             "ml_acc_before":round(ml_acc_before,4),"ml_acc_after":round(ml_acc_after,4),
+             "spread_acc_before":round(spread_acc_before,4),"spread_acc_after":round(spread_acc_after,4)}
+    if book_stats: entry["book_stats"] = book_stats
     history = []
     if LEARN_HISTORY_PATH.exists():
         try:
@@ -908,8 +1047,44 @@ def learn_from_results(target_date=None, progress_callback=None):
     history.append(entry)
     with open(LEARN_HISTORY_PATH, "w") as f: json.dump(history[-100:], f, indent=2)
 
-    return {"date":target_date,"games":len(results),"accuracy_before":round(acc_before*100,1),
-            "accuracy_after":round(acc_after*100,1),"results":results}
+    # Update status trained_at without overwriting model training metrics
+    if STATUS_PATH.exists():
+        try:
+            with open(STATUS_PATH) as f: status = json.load(f)
+        except: status = {}
+    else:
+        status = {}
+    status["trained"] = True
+    status["trained_at"] = datetime.now().isoformat()
+    with open(STATUS_PATH, "w") as f: json.dump(status, f, indent=2)
+    emit("Status updated")
+
+    # Backfill actual results into odds history CSV
+    if ODDS_HISTORY_CSV.exists():
+        try:
+            odds_df = pd.read_csv(ODDS_HISTORY_CSV)
+            for r in results:
+                mask = (odds_df["date"] == target_date) & \
+                       (odds_df["home_team"] == r["home_team"]) & \
+                       (odds_df["away_team"] == r["away_team"])
+                if mask.any():
+                    odds_df.loc[mask, "actual_margin"] = r["actual_margin"]
+                    odds_df.loc[mask, "actual_total"] = r["actual_total"]
+                    odds_df.loc[mask, "ml_correct"] = r["ml_correct"]
+                    odds_df.loc[mask, "spread_correct"] = r["spread_correct"]
+                    odds_df.loc[mask, "beat_book_spread"] = r.get("beat_book_spread")
+                    odds_df.loc[mask, "beat_book_ml"] = r.get("beat_book_ml")
+                    odds_df.loc[mask, "beat_book_ou"] = r.get("beat_book_ou")
+            odds_df.to_csv(ODDS_HISTORY_CSV, index=False)
+            emit("Odds history CSV updated with results")
+        except Exception as e:
+            emit(f"Warning: could not update odds CSV: {e}")
+
+    return {"date":target_date,"games":n,
+            "ml_acc_before":round(ml_acc_before*100,1),"ml_acc_after":round(ml_acc_after*100,1),
+            "spread_acc_before":round(spread_acc_before*100,1),"spread_acc_after":round(spread_acc_after*100,1),
+            "book_stats":book_stats,
+            "results":results}
 
 
 def _get_recent_players(logs, team):
@@ -1057,6 +1232,47 @@ def predict_today(model=None, meta=None):
         pred["picks"] = picks; predictions.append(pred)
 
     predictions.sort(key=lambda p: p["confidence"], reverse=True)
+
+    # Cache odds + model predictions for learn_from_results() to use later
+    cache = {}
+    if CACHED_ODDS_PATH.exists():
+        try:
+            with open(CACHED_ODDS_PATH) as f: cache = json.load(f)
+        except: cache = {}
+    cache[today] = {}
+    odds_rows = []
+    for p in predictions:
+        key = f"{p['away_team']}@{p['home_team']}"
+        cache[today][key] = {
+            "spread": p.get("odds_spread"), "total": p.get("odds_total"),
+            "home_ml": p.get("odds_home_ml"), "away_ml": p.get("odds_away_ml"),
+            "pred_margin": p["predicted_margin"], "pred_total": p["predicted_total"],
+            "pred_win_prob": p["win_prob"], "picks": p.get("picks", []),
+        }
+        odds_rows.append({
+            "date": today, "home_team": p["home_team"], "away_team": p["away_team"],
+            "book_spread": p.get("odds_spread"), "book_total": p.get("odds_total"),
+            "book_home_ml": p.get("odds_home_ml"), "book_away_ml": p.get("odds_away_ml"),
+            "pred_margin": p["predicted_margin"], "pred_total": p["predicted_total"],
+            "pred_win_prob": p["win_prob"],
+        })
+    # Keep last 14 days in JSON cache
+    dates = sorted(cache.keys())
+    if len(dates) > 14:
+        for d in dates[:-14]: del cache[d]
+    with open(CACHED_ODDS_PATH, "w") as f: json.dump(cache, f, indent=2)
+
+    # Append to persistent CSV (keeps full history)
+    new_df = pd.DataFrame(odds_rows)
+    if ODDS_HISTORY_CSV.exists():
+        existing = pd.read_csv(ODDS_HISTORY_CSV)
+        # Remove any existing rows for today to avoid duplicates on re-run
+        existing = existing[existing["date"] != today]
+        combined = pd.concat([existing, new_df], ignore_index=True)
+    else:
+        combined = new_df
+    combined.to_csv(ODDS_HISTORY_CSV, index=False)
+
     return predictions
 
 

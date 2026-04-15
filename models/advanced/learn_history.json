@@ -110,5 +110,79 @@
     "games": 10,
     "accuracy_before": 0.9,
     "accuracy_after": 0.9
+  },
+  {
+    "date": "20260407",
+    "learned_at": "2026-04-08T21:43:50.555112",
+    "games": 10,
+    "accuracy_before": 0.9,
+    "accuracy_after": 0.9
+  },
+  {
+    "date": "20260408",
+    "learned_at": "2026-04-09T11:20:53.675231",
+    "games": 7,
+    "accuracy_before": 0.7143,
+    "accuracy_after": 0.7143
+  },
+  {
+    "date": "20260408",
+    "learned_at": "2026-04-09T12:06:21.183156",
+    "games": 7,
+    "ml_acc_before": 0.7143,
+    "ml_acc_after": 0.8571,
+    "spread_acc_before": 0.7143,
+    "spread_acc_after": 0.7143
+  },
+  {
+    "date": "20260408",
+    "learned_at": "2026-04-09T12:09:03.121523",
+    "games": 7,
+    "ml_acc_before": 0.8571,
+    "ml_acc_after": 0.8571,
+    "spread_acc_before": 0.7143,
+    "spread_acc_after": 0.8571
+  },
+  {
+    "date": "20260408",
+    "learned_at": "2026-04-09T12:10:05.547349",
+    "games": 7,
+    "ml_acc_before": 1.0,
+    "ml_acc_after": 1.0,
+    "spread_acc_before": 0.8571,
+    "spread_acc_after": 1.0
+  },
+  {
+    "date": "20260408",
+    "learned_at": "2026-04-09T12:10:18.171998",
+    "games": 7,
+    "ml_acc_before": 1.0,
+    "ml_acc_after": 1.0,
+    "spread_acc_before": 1.0,
+    "spread_acc_after": 1.0
+  },
+  {
+    "date": "20260408",
+    "learned_at": "2026-04-09T12:10:23.128214",
+    "games": 7,
+    "ml_acc_before": 1.0,
+    "ml_acc_after": 1.0,
+    "spread_acc_before": 1.0,
+    "spread_acc_after": 1.0
+  },
+  {
+    "date": "20260409",
+    "learned_at": "2026-04-10T11:25:01.851995",
+    "games": 6,
+    "ml_acc_before": 0.8333,
+    "ml_acc_after": 0.8333,
+    "spread_acc_before": 1.0,
+    "spread_acc_after": 1.0,
+    "book_stats": {
+      "games_with_odds": 6,
+      "spread_vs_book": 6,
+      "ml_vs_book": 5,
+      "ou_vs_book": 3
+    }
   }
 ]

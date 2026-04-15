@@ -1,0 +1,396 @@
+{
+  "20260409": {
+    "LAL@GSW": {
+      "spread": -4.5,
+      "total": 225.5,
+      "home_ml": -192,
+      "away_ml": 160,
+      "pred_margin": -6.2,
+      "pred_total": 226.2,
+      "pred_win_prob": 34.1,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "LAL ML",
+          "confidence": 65.9
+        }
+      ]
+    },
+    "MIA@TOR": {
+      "spread": -3.5,
+      "total": 236.5,
+      "home_ml": -162,
+      "away_ml": 136,
+      "pred_margin": 4.1,
+      "pred_total": 237.3,
+      "pred_win_prob": 63.3,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "TOR ML",
+          "confidence": 63.3
+        },
+        {
+          "type": "Spread",
+          "pick": "TOR -3.5",
+          "confidence": 71.0,
+          "edge": 7.6
+        }
+      ]
+    },
+    "IND@BKN": {
+      "spread": 3.5,
+      "total": 223.5,
+      "home_ml": 136,
+      "away_ml": -162,
+      "pred_margin": -7.1,
+      "pred_total": 220.4,
+      "pred_win_prob": 38.1,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "IND ML",
+          "confidence": 61.9
+        },
+        {
+          "type": "Spread",
+          "pick": "IND -3.5",
+          "confidence": 78.5,
+          "edge": -10.6
+        }
+      ]
+    },
+    "PHI@HOU": {
+      "spread": -5.5,
+      "total": 226.5,
+      "home_ml": -218,
+      "away_ml": 180,
+      "pred_margin": 0.3,
+      "pred_total": 230.0,
+      "pred_win_prob": 55.2,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "HOU ML",
+          "confidence": 55.2
+        },
+        {
+          "type": "Spread",
+          "pick": "HOU -5.5",
+          "confidence": 66.4,
+          "edge": 5.8
+        }
+      ]
+    },
+    "BOS@NYK": {
+      "spread": -5.5,
+      "total": 214.5,
+      "home_ml": -218,
+      "away_ml": 180,
+      "pred_margin": -2.7,
+      "pred_total": 223.7,
+      "pred_win_prob": 46.0,
+      "picks": [
+        {
+          "type": "Spread",
+          "pick": "NYK -5.5",
+          "confidence": 59.0,
+          "edge": 2.8
+        },
+        {
+          "type": "Total",
+          "pick": "Over 214.5",
+          "confidence": 65.8,
+          "edge": 9.2
+        }
+      ]
+    },
+    "CHI@WAS": {
+      "spread": 6.5,
+      "total": 248.5,
+      "home_ml": 210,
+      "away_ml": -258,
+      "pred_margin": -2.9,
+      "pred_total": 236.9,
+      "pred_win_prob": 47.4,
+      "picks": [
+        {
+          "type": "Spread",
+          "pick": "CHI -6.5",
+          "confidence": 75.6,
+          "edge": -9.4
+        },
+        {
+          "type": "Total",
+          "pick": "Under 248.5",
+          "confidence": 69.3,
+          "edge": -11.6
+        }
+      ]
+    }
+  },
+  "20260410": {
+    "NOP@BOS": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": 7.7,
+      "pred_total": 233.7,
+      "pred_win_prob": 79.5,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "BOS ML",
+          "confidence": 79.5
+        }
+      ]
+    },
+    "DAL@SAS": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": 10.2,
+      "pred_total": 236.4,
+      "pred_win_prob": 73.4,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "SAS ML",
+          "confidence": 73.4
+        }
+      ]
+    },
+    "PHI@IND": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": -5.6,
+      "pred_total": 233.3,
+      "pred_win_prob": 27.5,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "PHI ML",
+          "confidence": 72.5
+        }
+      ]
+    },
+    "BKN@MIL": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": 4.0,
+      "pred_total": 238.1,
+      "pred_win_prob": 71.5,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "MIL ML",
+          "confidence": 71.5
+        }
+      ]
+    },
+    "MIN@HOU": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": 1.7,
+      "pred_total": 221.4,
+      "pred_win_prob": 69.4,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "HOU ML",
+          "confidence": 69.4
+        }
+      ]
+    },
+    "ORL@CHI": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": -5.1,
+      "pred_total": 240.8,
+      "pred_win_prob": 30.9,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "ORL ML",
+          "confidence": 69.1
+        }
+      ]
+    },
+    "MEM@UTA": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": 3.6,
+      "pred_total": 222.3,
+      "pred_win_prob": 68.2,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "UTA ML",
+          "confidence": 68.2
+        }
+      ]
+    },
+    "MIA@WAS": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": -5.6,
+      "pred_total": 241.9,
+      "pred_win_prob": 32.4,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "MIA ML",
+          "confidence": 67.6
+        }
+      ]
+    },
+    "OKC@DEN": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": 1.3,
+      "pred_total": 227.5,
+      "pred_win_prob": 65.9,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "DEN ML",
+          "confidence": 65.9
+        }
+      ]
+    },
+    "PHX@LAL": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": 2.2,
+      "pred_total": 219.5,
+      "pred_win_prob": 65.7,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "LAL ML",
+          "confidence": 65.7
+        }
+      ]
+    },
+    "GSW@SAC": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": -4.4,
+      "pred_total": 241.2,
+      "pred_win_prob": 37.9,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "GSW ML",
+          "confidence": 62.1
+        }
+      ]
+    },
+    "CLE@ATL": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": 0.4,
+      "pred_total": 233.4,
+      "pred_win_prob": 61.7,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "ATL ML",
+          "confidence": 61.7
+        }
+      ]
+    },
+    "TOR@NYK": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": -0.1,
+      "pred_total": 233.9,
+      "pred_win_prob": 61.2,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "NYK ML",
+          "confidence": 61.2
+        }
+      ]
+    },
+    "DET@CHA": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": -1.2,
+      "pred_total": 230.9,
+      "pred_win_prob": 55.2,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "CHA ML",
+          "confidence": 55.2
+        }
+      ]
+    },
+    "LAC@POR": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": -0.6,
+      "pred_total": 231.9,
+      "pred_win_prob": 53.0,
+      "picks": []
+    }
+  },
+  "20260414": {
+    "MIA@CHA": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": 4.3,
+      "pred_total": 239.1,
+      "pred_win_prob": 71.8,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "CHA ML",
+          "confidence": 71.8
+        }
+      ]
+    },
+    "POR@PHX": {
+      "spread": null,
+      "total": null,
+      "home_ml": null,
+      "away_ml": null,
+      "pred_margin": -3.5,
+      "pred_total": 236.7,
+      "pred_win_prob": 48.0,
+      "picks": []
+    }
+  }
+}
