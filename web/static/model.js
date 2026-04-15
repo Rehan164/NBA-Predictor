@@ -408,7 +408,7 @@ function renderPredictions(preds) {
 
   predContainer.innerHTML = "";
   const grid = document.createElement("div");
-  grid.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:16px";
+  grid.style.cssText = "display:flex;flex-direction:column;gap:12px";
 
   for (const p of preds) {
     grid.appendChild(buildPredCard(p));
@@ -417,62 +417,170 @@ function renderPredictions(preds) {
   predContainer.appendChild(grid);
 }
 
+/* ── helpers ──────────────────────────────────────────────────────── */
+
+function fmtOdds(n) {
+  if (n == null) return null;
+  return n > 0 ? `+${n}` : `${n}`;
+}
+
+function fmtSpread(n) {
+  if (n == null) return null;
+  const v = parseFloat(n);
+  return v > 0 ? `+${v.toFixed(1)}` : v.toFixed(1);
+}
+
+function betStrength(conf) {
+  if (conf >= 65) return "strong";
+  if (conf >= 57) return "moderate";
+  return "weak";
+}
+
+function confBarHtml(pct) {
+  // Normalize: 50% = 0 fill, 80% = 100% fill (so bar shows "edge above coinflip")
+  const fill = Math.min(100, Math.max(0, (pct - 50) / 30 * 100));
+  return `<div class="pred-conf-track"><div class="pred-conf-fill" style="width:${fill.toFixed(0)}%"></div></div>`;
+}
+
 function buildPredCard(p) {
   const card = document.createElement("div");
   card.className = "pred-card";
 
-  const confLevel = p.confidence >= 60 ? "high" : p.confidence >= 40 ? "medium" : "low";
+  const homeWP  = parseFloat(p.win_prob);          // home win %
+  const awayWP  = parseFloat((100 - homeWP).toFixed(1));
+  const margin  = p.predicted_margin;               // home − away (positive = home wins)
+  const total   = p.predicted_total;
+  // ML direction is driven by win_prob (the classification head), not by the
+  // margin regression head — the two NN heads can disagree slightly.
+  const homeFav = homeWP >= 50;
 
-  // Matchup header
+  /* ── Header ─────────────────────────────────────────────────────── */
+  const awayLogo = p.away_logo ? `<img src="${p.away_logo}" class="pred-team-logo" onerror="this.style.display='none'">` : "";
+  const homeLogo = p.home_logo ? `<img src="${p.home_logo}" class="pred-team-logo" onerror="this.style.display='none'">` : "";
+
   let html = `
-    <div class="pred-matchup">
-      <div class="pred-teams">${p.away_team} @ ${p.home_team}</div>
-      <div class="pred-confidence ${confLevel}">${p.confidence}%</div>
+    <div class="pred-header">
+      <div class="pred-header-top">
+        <div class="pred-teams">
+          ${awayLogo}${p.away_name || p.away_team}
+          <span class="pred-at">@</span>
+          ${homeLogo}${p.home_name || p.home_team}
+        </div>
+      </div>
+      <div class="pred-wp-row">
+        <span class="pred-wp-label left ${!homeFav ? "active" : ""}">${p.away_team} ${awayWP.toFixed(1)}%</span>
+        <div class="pred-wp-track">
+          <div class="pred-wp-away ${!homeFav ? "fav" : ""}" style="width:${awayWP.toFixed(1)}%"></div>
+          <div class="pred-wp-home ${homeFav ? "fav" : ""}" style="width:${homeWP.toFixed(1)}%"></div>
+        </div>
+        <span class="pred-wp-label right ${homeFav ? "active" : ""}">${homeWP.toFixed(1)}% ${p.home_team}</span>
+      </div>
     </div>
-    <div class="pred-stats">
-      <div class="pred-stat">
-        <div class="pred-stat-val">${p.win_prob}%</div>
-        <div class="pred-stat-label">Home Win %</div>
+    <div class="pred-bets">`;
+
+  /* ── ML row ──────────────────────────────────────────────────────── */
+  const mlTeam    = homeFav ? p.home_team : p.away_team;
+  const mlOddsNum = homeFav ? p.odds_home_ml : p.odds_away_ml;
+  const mlConf    = Math.max(homeWP, 100 - homeWP);
+  const mlStr     = betStrength(mlConf);
+  const mlOddsTxt = mlOddsNum != null ? `<b>${fmtOdds(mlOddsNum)}</b>` : "";
+  const oppOddsNum = homeFav ? p.odds_away_ml : p.odds_home_ml;
+  const oppTxt    = oppOddsNum != null ? ` · Opp ${fmtOdds(oppOddsNum)}` : "";
+
+  html += `
+    <div class="pred-bet-row ${mlStr}">
+      <div class="pred-bet-label">ML</div>
+      <div class="pred-bet-body">
+        <div class="pred-bet-pick">${mlTeam} to Win</div>
+        <div class="pred-bet-sub">Market: ${mlOddsTxt || "—"}${oppTxt} · Model: ${homeWP.toFixed(1)}% home / ${awayWP.toFixed(1)}% away</div>
       </div>
-      <div class="pred-stat">
-        <div class="pred-stat-val">${p.predicted_margin > 0 ? "+" : ""}${p.predicted_margin}</div>
-        <div class="pred-stat-label">Pred Margin</div>
-      </div>
-      <div class="pred-stat">
-        <div class="pred-stat-val">${p.predicted_total}</div>
-        <div class="pred-stat-label">Pred Total</div>
+      <div class="pred-bet-conf">
+        <span class="pred-conf-pct">${mlConf.toFixed(1)}%</span>
+        ${confBarHtml(mlConf)}
       </div>
     </div>`;
 
-  // Picks
-  if (p.picks && p.picks.length > 0) {
-    html += '<div class="pred-picks">';
-    for (const pick of p.picks) {
-      const strength = pick.confidence >= 60 ? "strong" : pick.confidence >= 50 ? "moderate" : "";
-      html += `
-        <div class="pred-pick ${strength}">
-          <div>
-            <span class="pred-pick-name">${pick.pick}</span>
-            <span class="pred-pick-type">${pick.type}</span>
+  /* ── Spread row ──────────────────────────────────────────────────── */
+  if (p.odds_spread != null) {
+    // odds_spread = home team's spread (e.g. -5.5 means home is the 5.5-pt favourite).
+    // Correct cover formula: edge = margin + homeSpread
+    //   homeSpread = -5.5 → home must win by >5.5 to cover → edge = margin - 5.5
+    //   Positive edge → home covers; negative edge → away covers.
+    const homeSpread = parseFloat(p.odds_spread);
+    const awaySpread = -homeSpread;
+    const edge       = margin + homeSpread;          // positive → home covers
+    const absEdge    = Math.abs(edge);
+    const homeCovers = edge > 0;
+    // Covering the spread requires winning by a margin, which is strictly harder
+    // than just winning → cap spread confidence at ML confidence when same team.
+    let spreadConf = Math.min(80, 52 + absEdge * 2.5);
+    if (homeCovers === homeFav) spreadConf = Math.min(spreadConf, mlConf);
+    const spreadStr  = betStrength(spreadConf);
+    const pickTeam   = homeCovers ? p.home_team : p.away_team;
+    const pickLine   = homeCovers ? fmtSpread(homeSpread) : fmtSpread(awaySpread);
+    const edgeTxt    = `${edge > 0 ? "+" : ""}${edge.toFixed(1)} pt edge`;
+
+    html += `
+      <div class="pred-bet-row ${spreadStr}">
+        <div class="pred-bet-label">Spread</div>
+        <div class="pred-bet-body">
+          <div class="pred-bet-pick">${pickTeam} ${pickLine}</div>
+          <div class="pred-bet-sub">
+            Market: <b>${p.home_team} ${fmtSpread(homeSpread)} / ${p.away_team} ${fmtSpread(awaySpread)}</b>
+            · Model: ${margin > 0 ? "+" : ""}${margin} · ${edgeTxt}
           </div>
-          <span class="pred-pick-conf">${pick.confidence}%</span>
-        </div>`;
-    }
-    html += '</div>';
+        </div>
+        <div class="pred-bet-conf">
+          <span class="pred-conf-pct">${spreadConf.toFixed(1)}%</span>
+          ${confBarHtml(spreadConf)}
+        </div>
+      </div>`;
   }
 
-  // Odds chips
-  const chips = [];
-  if (p.odds_spread != null)  chips.push(`Spread: ${p.odds_spread > 0 ? "+" : ""}${p.odds_spread}`);
-  if (p.odds_total != null)   chips.push(`O/U: ${p.odds_total}`);
-  if (p.odds_home_ml != null) chips.push(`ML: ${p.odds_home_ml > 0 ? "+" : ""}${p.odds_home_ml}`);
-  if (chips.length) {
-    html += '<div class="pred-odds">';
-    for (const c of chips) html += `<span class="pred-odds-chip">${c}</span>`;
-    html += '</div>';
+  /* ── Total row ───────────────────────────────────────────────────── */
+  if (p.odds_total != null) {
+    const mktTotal  = parseFloat(p.odds_total);
+    const te        = total - mktTotal;
+    const absTe     = Math.abs(te);
+    const totalConf = Math.min(75, 52 + absTe * 1.5);
+    const totalStr  = betStrength(totalConf);
+    const goOver    = te > 0;
+    const edgeTxt   = `${te > 0 ? "+" : ""}${te.toFixed(1)} pts vs line`;
+
+    html += `
+      <div class="pred-bet-row ${totalStr}">
+        <div class="pred-bet-label">Total</div>
+        <div class="pred-bet-body">
+          <div class="pred-bet-pick">${goOver ? "OVER" : "UNDER"} ${mktTotal}</div>
+          <div class="pred-bet-sub">
+            Market O/U: <b>${mktTotal}</b>
+            · Model total: ${total} · ${edgeTxt}
+          </div>
+        </div>
+        <div class="pred-bet-conf">
+          <span class="pred-conf-pct">${totalConf.toFixed(1)}%</span>
+          ${confBarHtml(totalConf)}
+        </div>
+      </div>`;
   }
 
-  // Injury note
+  /* ── No odds notice ──────────────────────────────────────────────── */
+  if (p.odds_spread == null && p.odds_total == null && p.odds_home_ml == null) {
+    html += `<div class="pred-no-odds">No sportsbook lines available for this game.</div>`;
+  }
+
+  html += `</div>`; // .pred-bets
+
+  /* ── Model raw output summary ────────────────────────────────────── */
+  const predWinner  = margin >= 0 ? (p.home_name || p.home_team) : (p.away_name || p.away_team);
+  const predMarginAbs = Math.abs(margin).toFixed(1);
+  html += `
+    <div class="pred-model-summary">
+      <span>Model: <b>${predWinner}</b> wins by <b>${predMarginAbs}</b> pts</span>
+      <span>Total: <b>${p.predicted_total}</b></span>
+    </div>`;
+
+  /* ── Injury note ─────────────────────────────────────────────────── */
   if (p.home_missing > 0 || p.away_missing > 0) {
     const parts = [];
     if (p.home_missing > 0) parts.push(`${p.home_team}: ${p.home_missing} out`);

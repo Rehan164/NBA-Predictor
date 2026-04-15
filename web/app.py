@@ -70,10 +70,6 @@ _injuries_cache_date = None
 _headshots: dict = {}
 _headshots_teams: set = set()
 
-# ── Analysis job state ────────────────────────────────────────────────────
-_analysis_job = {"status": "idle", "log": [], "result": None, "error": None}
-_analysis_lock = threading.Lock()
-
 # ── Model training job state ─────────────────────────────────────────────
 _model_job = {"status": "idle", "log": [], "error": None}
 _model_lock = threading.Lock()
@@ -267,204 +263,11 @@ def _calc_hot_streak(logs_df: pd.DataFrame, player_name: str) -> dict:
     return result
 
 
-def _estimate_prob(pick_desc: str) -> float:
-    u = pick_desc.upper()
-    if "HIGH" in u:
-        return 0.65
-    if "MODERATE" in u or "MEDIUM" in u:
-        return 0.58
-    if "LOW" in u:
-        return 0.52
-    return 0.55
-
-
-def _prob_to_american(p: float) -> int:
-    if p <= 0 or p >= 1:
-        return 0
-    if p >= 0.5:
-        return int(round(-100 * p / (1 - p) / 5) * 5)
-    return int(round(100 * (1 - p) / p / 5) * 5)
-
-
-# ── Analysis background job ───────────────────────────────────────────────
-
-def _run_analysis_bg(target_picks: int):
-    global _analysis_job
-    log = _analysis_job["log"]
-
-    def emit(msg):
-        log.append(msg)
-
-    try:
-        emit("Fetching today's games...")
-        games = _get_today_games()
-        if not games:
-            raise RuntimeError("No games found for today.")
-        emit(f"Found {len(games)} games: " + ", ".join(f"{g['away_team']}@{g['home_team']}" for g in games))
-
-        teams = {g["home_team"] for g in games} | {g["away_team"] for g in games}
-
-        # Odds
-        odds_data = []
-        raw_odds = []
-        player_props_data = {}
-        emit("Fetching odds...")
-        try:
-            from picks.odds_api import get_game_odds, get_player_props, get_best_odds, format_prop_summary
-            raw_odds = get_game_odds() or []
-            odds_data = get_best_odds(raw_odds) if raw_odds else []
-            emit(f"Got odds for {len(odds_data)} games")
-
-            emit("Fetching player props...")
-            for go in raw_odds[:len(games)]:
-                props = get_player_props(go["id"])
-                if props:
-                    key = f"{go['away_team']} @ {go['home_team']}"
-                    player_props_data[key] = props
-                    emit(f"  {key}: {len(props)} players")
-        except Exception as e:
-            emit(f"Odds unavailable: {e}")
-
-        # Injuries
-        emit("Fetching injury report...")
-        try:
-            from picks.injury_report import get_full_injury_report, get_out_players, format_injury_report
-            injury_report = get_full_injury_report(team_filter=list(teams))
-            out_players = get_out_players(injury_report)
-            injury_text = format_injury_report(injury_report, teams=list(teams))
-            total_out = sum(len(v) for v in out_players.values())
-            emit(f"  {total_out} players OUT")
-        except Exception as e:
-            injury_report = {}
-            out_players = {}
-            injury_text = "No injury data available."
-            emit(f"Injuries unavailable: {e}")
-
-        # Patterns
-        emit("Loading injury patterns...")
-        try:
-            from picks.patterns import load_cached_patterns, find_active_patterns, format_patterns
-            all_patterns = load_cached_patterns()
-            active_patterns = find_active_patterns(all_patterns, out_players)
-            patterns_text = format_patterns(active_patterns)
-            emit(f"  {len(active_patterns)} active patterns")
-        except Exception as e:
-            patterns_text = ""
-            emit(f"Patterns unavailable: {e}")
-
-        # ML models
-        emit("Running ML model predictions...")
-        try:
-            from picks.model_predictions import (
-                load_models, load_feature_data, predict_game,
-                get_recent_player_stats, format_predictions_for_claude,
-            )
-            models = load_models()
-            feature_df = load_feature_data()
-            game_predictions = []
-            for g in games:
-                pred = predict_game(g["home_team"], g["away_team"], models, feature_df, injuries=out_players)
-                game_predictions.append(pred)
-            predictions_text = format_predictions_for_claude(game_predictions, odds_data)
-            emit("  Models ran successfully")
-        except Exception as e:
-            predictions_text = "Model predictions unavailable."
-            emit(f"Models error: {e}")
-            game_predictions = []
-
-        # Player context
-        player_context_lines = []
-        try:
-            from picks.model_predictions import get_recent_player_stats
-            for g in games:
-                for tk in ["home_team", "away_team"]:
-                    team = g[tk]
-                    stats = get_recent_player_stats(team)
-                    if stats:
-                        player_context_lines.append(f"\n{team} recent:")
-                        for p in stats:
-                            player_context_lines.append(
-                                f"  {p['name']}: {p['avg_pts']} PTS / {p['avg_reb']} REB / {p['avg_ast']} AST"
-                            )
-        except Exception:
-            pass
-
-        props_text = ""
-        if player_props_data:
-            from picks.odds_api import format_prop_summary
-            parts = []
-            for gk, props in player_props_data.items():
-                parts.append(f"\n{gk}:")
-                parts.append(format_prop_summary(props))
-            props_text = "\n".join(parts)
-
-        full_player_text = ""
-        if player_context_lines:
-            full_player_text += "PLAYER RECENT STATS:\n" + "\n".join(player_context_lines)
-        if props_text:
-            full_player_text += "\n\nPLAYER PROP LINES:\n" + props_text
-
-        # Claude
-        emit(f"Sending to Claude (target: {target_picks} picks)...")
-        from picks.claude_analyst import iterative_analysis
-        analysis, picks = iterative_analysis(
-            model_predictions=predictions_text,
-            injury_report=injury_text,
-            active_patterns=patterns_text,
-            player_props_summary=full_player_text,
-            odds_summary="",
-            target_picks=target_picks,
-            max_iterations=3,
-        )
-        emit(f"Claude selected {len(picks)} picks")
-
-        # Build structured picks with probability estimates
-        structured_picks = []
-        for pick in picks:
-            desc = pick["description"]
-            prob = _estimate_prob(desc)
-            structured_picks.append({
-                "description": desc,
-                "probability": round(prob * 100, 1),
-                "odds": _prob_to_american(prob),
-            })
-
-        # Parlay legs
-        parlay_legs = []
-        running_prob = 1.0
-        for i, p in enumerate(structured_picks, 1):
-            running_prob *= p["probability"] / 100
-            parlay_legs.append({
-                "legs": i,
-                "probability": round(running_prob * 100, 1),
-                "odds": _prob_to_american(running_prob),
-            })
-
-        _analysis_job["result"] = {
-            "analysis": analysis,
-            "picks": structured_picks,
-            "parlay_legs": parlay_legs,
-        }
-        _analysis_job["status"] = "done"
-        emit("Done.")
-
-    except Exception as e:
-        import traceback
-        _analysis_job["error"] = str(e)
-        _analysis_job["log"].append(f"ERROR: {e}")
-        _analysis_job["status"] = "error"
-
-
 # ── Routes ────────────────────────────────────────────────────────────────
 
 @app.route("/")
 def index():
     return render_template("index.html", date=datetime.now(ET).strftime("%A, %B %d, %Y"))
-
-
-@app.route("/analysis")
-def analysis_page():
-    return render_template("analysis.html", date=datetime.now(ET).strftime("%A, %B %d, %Y"))
 
 
 @app.route("/api/games")
@@ -966,31 +769,6 @@ def api_live_boxscore(event_id):
         "players":     players,
         "home_win_prob": home_win_prob,
     })
-
-
-@app.route("/api/analysis/start", methods=["POST"])
-def api_analysis_start():
-    global _analysis_job
-    with _analysis_lock:
-        if _analysis_job["status"] == "running":
-            return jsonify({"error": "Analysis already running"}), 409
-        target = request.json.get("picks", 5) if request.is_json else 5
-        _analysis_job = {"status": "running", "log": [], "result": None, "error": None}
-        threading.Thread(target=_run_analysis_bg, args=(target,), daemon=True).start()
-    return jsonify({"ok": True})
-
-
-@app.route("/api/analysis/status")
-def api_analysis_status():
-    return jsonify(_analysis_job)
-
-
-@app.route("/api/analysis/reset", methods=["POST"])
-def api_analysis_reset():
-    global _analysis_job
-    with _analysis_lock:
-        _analysis_job = {"status": "idle", "log": [], "result": None, "error": None}
-    return jsonify({"ok": True})
 
 
 # ── Model Page ────────────────────────────────────────────────────────────

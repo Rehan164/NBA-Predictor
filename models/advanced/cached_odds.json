@@ -371,14 +371,14 @@
       "total": null,
       "home_ml": null,
       "away_ml": null,
-      "pred_margin": 4.3,
-      "pred_total": 239.1,
-      "pred_win_prob": 71.8,
+      "pred_margin": 3.5,
+      "pred_total": 239.7,
+      "pred_win_prob": 72.1,
       "picks": [
         {
           "type": "ML",
           "pick": "CHA ML",
-          "confidence": 71.8
+          "confidence": 72.1
         }
       ]
     },
@@ -387,10 +387,68 @@
       "total": null,
       "home_ml": null,
       "away_ml": null,
-      "pred_margin": -3.5,
-      "pred_total": 236.7,
-      "pred_win_prob": 48.0,
+      "pred_margin": -3.7,
+      "pred_total": 236.1,
+      "pred_win_prob": 48.6,
       "picks": []
+    }
+  },
+  "20260415": {
+    "GSW@LAC": {
+      "spread": -5.5,
+      "total": 221.5,
+      "home_ml": -205,
+      "away_ml": 170,
+      "pred_margin": 1.9,
+      "pred_total": 237.4,
+      "pred_win_prob": 65.5,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "LAC ML",
+          "confidence": 65.5
+        },
+        {
+          "type": "Spread",
+          "pick": "GSW +5.5",
+          "confidence": 61.1,
+          "edge": -3.6
+        },
+        {
+          "type": "Total",
+          "pick": "Over 221.5",
+          "confidence": 75,
+          "edge": 15.9
+        }
+      ]
+    },
+    "ORL@PHI": {
+      "spread": -2.5,
+      "total": 222.5,
+      "home_ml": -135,
+      "away_ml": 114,
+      "pred_margin": -0.4,
+      "pred_total": 228.1,
+      "pred_win_prob": 61.3,
+      "picks": [
+        {
+          "type": "ML",
+          "pick": "PHI ML",
+          "confidence": 61.3
+        },
+        {
+          "type": "Spread",
+          "pick": "ORL +2.5",
+          "confidence": 59.2,
+          "edge": -2.9
+        },
+        {
+          "type": "Total",
+          "pick": "Over 222.5",
+          "confidence": 60.4,
+          "edge": 5.6
+        }
+      ]
     }
   }
 }

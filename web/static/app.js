@@ -148,23 +148,86 @@ function renderGames(games) {
       const mlPick = ml.pick
         ? `${ml.pick} ${confidenceBadge(ml.confidence)}${disagreement ? ' <span class="disagree-flag" title="Model disagrees with market">⚠</span>' : ""}`
         : "—";
-      const spLine = sp.favored ? `${sp.favored} -${sp.by_points}` : "—";
-      const totLine = tot.predicted_total ? tot.predicted_total.toFixed(1) : "—";
+
+      // ── Spread: model vs market ──────────────────────────────────────────
+      // sp.predicted_margin = home_score − away_score (positive = home wins)
+      // mkt.spread          = away team's line  (e.g. "+8.5" → away gets 8.5 pts)
+      // edge = model_margin − spread_away
+      //   positive → home covers market line
+      //   negative → away covers market line
+      const modelMargin = sp.predicted_margin;
+      const spLine = sp.favored
+        ? `${sp.favored} ${modelMargin >= 0 ? "-" : "+"}${sp.by_points}`
+        : "—";
+
+      let spreadEdgeHtml = "";
+      let mktSpreadInline = "";
+      const mktSpreadRaw = mkt.spread;
+      if (modelMargin !== undefined && mktSpreadRaw != null && mktSpreadRaw !== "") {
+        const mktSpreadNum = parseFloat(mktSpreadRaw);
+        if (!isNaN(mktSpreadNum)) {
+          // Show market line next to model (away-team perspective, e.g. "CHA +8.5")
+          const mktSpreadFmt = mktSpreadNum >= 0 ? `+${mktSpreadNum.toFixed(1)}` : mktSpreadNum.toFixed(1);
+          mktSpreadInline = `<span class="mkt-inline" title="Market line">${g.away_team} ${mktSpreadFmt}</span>`;
+
+          // Edge calculation
+          const edge    = modelMargin - mktSpreadNum;
+          const absEdge = Math.abs(edge);
+          if (absEdge >= 1.5) {
+            const homeCovers  = edge > 0;
+            const mktHomeNum  = -mktSpreadNum;
+            const homeFmt     = mktHomeNum >= 0 ? `+${mktHomeNum.toFixed(1)}` : mktHomeNum.toFixed(1);
+            const betLabel    = homeCovers
+              ? `${g.home_team} ${homeFmt}`
+              : `${g.away_team} ${mktSpreadFmt}`;
+            const edgeCls = absEdge >= 4 ? "edge-strong" : "edge-mod";
+            spreadEdgeHtml = `<div class="edge-rec ${edgeCls}">▶ ${betLabel}<span class="edge-pts">${absEdge.toFixed(1)} pt edge</span></div>`;
+          }
+        }
+      }
+
+      // ── Total: model vs market ───────────────────────────────────────────
+      // edge_total = model_total − market_total
+      //   positive → OVER has value   negative → UNDER has value
+      const modelTotal = tot.predicted_total;
+      const totLine = modelTotal != null ? modelTotal.toFixed(1) : "—";
+
+      let totalEdgeHtml = "";
+      let mktTotalInline = "";
+      const mktTotalRaw = mkt.total;
+      if (modelTotal != null && mktTotalRaw != null && mktTotalRaw !== "") {
+        const mktTotalNum = parseFloat(mktTotalRaw);
+        if (!isNaN(mktTotalNum)) {
+          mktTotalInline = `<span class="mkt-inline" title="Market O/U">${mktTotalNum}</span>`;
+
+          const totalEdge    = modelTotal - mktTotalNum;
+          const absTotalEdge = Math.abs(totalEdge);
+          if (absTotalEdge >= 1.5) {
+            const goOver  = totalEdge > 0;
+            const edgeCls = absTotalEdge >= 4 ? "edge-strong" : "edge-mod";
+            totalEdgeHtml = `<div class="edge-rec ${edgeCls}">▶ ${goOver ? "OVER" : "UNDER"} ${mktTotalNum}<span class="edge-pts">${absTotalEdge.toFixed(1)} pts</span></div>`;
+          }
+        }
+      }
 
       predsHtml = `
         <div class="game-divider"></div>
         <div class="prediction-row">
-          <span class="pred-label">Model ML</span>
+          <span class="pred-label">ML</span>
           <span class="pred-value">${mlPick}</span>
         </div>
         <div class="prediction-row">
           <span class="pred-label">Spread</span>
           <span class="pred-value">${spLine}</span>
+          ${mktSpreadInline}
         </div>
+        ${spreadEdgeHtml}
         <div class="prediction-row">
           <span class="pred-label">Total</span>
           <span class="pred-value">${totLine}</span>
-        </div>`;
+          ${mktTotalInline}
+        </div>
+        ${totalEdgeHtml}`;
     }
 
     // Combine market + model

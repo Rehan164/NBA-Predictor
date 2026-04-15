@@ -1136,272 +1136,6 @@ main {
   background: rgba(99,102,241,0.1);
 }
 
-/* ── Analysis Page ───────────────────────────────────────────────────────── */
-.analysis-hero {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 28px;
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-.analysis-hero-text h2 {
-  font-size: 18px;
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.analysis-hero-text p {
-  font-size: 13px;
-  color: var(--text-muted);
-  max-width: 480px;
-}
-
-.analysis-hero-actions {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.picks-target {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.picks-target input {
-  width: 52px;
-  padding: 6px 8px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-size: 13px;
-  text-align: center;
-  outline: none;
-}
-
-.btn-run {
-  padding: 10px 22px;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: var(--accent);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: var(--transition);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-
-.btn-run:hover { background: var(--accent-hover); }
-.btn-run:disabled { opacity: 0.5; cursor: not-allowed; }
-.btn-run .refresh-icon { animation: spin 1s linear infinite; }
-
-/* Progress log */
-.progress-log {
-  background: #0a0a0d;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 20px;
-  font-family: "SF Mono", "Fira Code", monospace;
-  font-size: 12px;
-  color: var(--text-dim);
-  min-height: 80px;
-  max-height: 220px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-  display: none;
-}
-
-.progress-log.visible { display: block; }
-
-.log-line { line-height: 1.7; }
-.log-line.error { color: var(--red); }
-.log-line.done  { color: var(--green); }
-
-/* Pick cards */
-.picks-section { display: none; }
-.picks-section.visible { display: block; }
-
-.picks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 24px;
-}
-
-.pick-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 16px 20px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.pick-number {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--accent-dim);
-  color: var(--accent);
-  font-size: 13px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.pick-desc {
-  flex: 1;
-  font-size: 14px;
-  color: var(--text);
-  font-weight: 500;
-}
-
-.pick-prob-block {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-.pick-prob {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.pick-prob.high   { color: var(--green); }
-.pick-prob.medium { color: var(--yellow); }
-.pick-prob.low    { color: var(--red); }
-
-.pick-odds {
-  font-size: 12px;
-  color: var(--text-muted);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 3px 8px;
-  font-weight: 600;
-}
-
-/* Parlay table */
-.parlay-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.parlay-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.parlay-title {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.parlay-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.parlay-table th {
-  padding: 10px 20px;
-  text-align: left;
-  font-size: 11px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-}
-
-.parlay-table td {
-  padding: 12px 20px;
-  font-size: 13px;
-  border-bottom: 1px solid var(--border);
-}
-
-.parlay-table tr:last-child td { border-bottom: none; }
-
-.parlay-prob-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.prob-bar-track {
-  flex: 1;
-  height: 6px;
-  background: var(--bg);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.prob-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.5s ease;
-}
-
-.prob-bar-fill.high   { background: var(--green); }
-.prob-bar-fill.medium { background: var(--yellow); }
-.prob-bar-fill.low    { background: var(--red); }
-
-/* Full analysis text */
-.analysis-full {
-  display: none;
-  background: #0a0a0d;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-  font-size: 13px;
-  line-height: 1.8;
-  color: var(--text-dim);
-  white-space: pre-wrap;
-  max-height: 500px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-
-.analysis-full.visible { display: block; }
-
-.btn-toggle-analysis {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 13px;
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: var(--transition);
-  margin-bottom: 12px;
-}
-
-.btn-toggle-analysis:hover { border-color: var(--accent); color: var(--accent); }
-
 /* ── Live Tracker ────────────────────────────────────────────────────────── */
 
 /* Refresh indicator */
@@ -2446,4 +2180,46 @@ main {
 
 @media (max-width: 400px) {
   .players-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Sportsbook Edge Indicators ──────────────────────────────────────────── */
+.mkt-inline {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(99, 102, 241, 0.10);
+  border-radius: 3px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+  font-weight: 500;
+}
+
+.edge-rec {
+  font-size: 12px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.edge-rec.edge-strong {
+  color: var(--green);
+  background: rgba(34, 197, 94, 0.12);
+  border-left: 3px solid var(--green);
+}
+
+.edge-rec.edge-mod {
+  color: var(--yellow);
+  background: rgba(234, 179, 8, 0.10);
+  border-left: 3px solid var(--yellow);
+}
+
+.edge-pts {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.75;
+  margin-left: auto;
 }
